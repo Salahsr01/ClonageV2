@@ -30,7 +30,7 @@
     "clean-css": "^5.3.3",
     "commander": "^14.0.3",
     "css-tree": "^3.2.1",
-    "freeze-dry": "^0.3.0",
+    "freeze-dry": "^1.0.0",
     "ora": "^9.3.0",
     "playwright": "^1.59.1",
     "prettier": "^3.8.3",
