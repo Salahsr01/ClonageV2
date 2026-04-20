@@ -1,0 +1,45 @@
+{
+  "name": "clonage",
+  "version": "2.0.0",
+  "description": "Clone, analyze, and generate Awwwards-level websites",
+  "main": "dist/cli.js",
+  "bin": {
+    "clonage": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "clone": "tsc && node dist/cli.js clone",
+    "analyze": "tsc && node dist/cli.js analyze",
+    "search": "tsc && node dist/cli.js search",
+    "generate": "tsc && node dist/cli.js generate",
+    "kb": "tsc && node dist/cli.js kb",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/tests/**/*.test.js\""
+  },
+  "keywords": [
+    "web-clone",
+    "learning",
+    "reverse-engineering"
+  ],
+  "author": "Salah",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@types/node": "^25.6.0",
+    "chalk": "^5.6.2",
+    "clean-css": "^5.3.3",
+    "commander": "^14.0.3",
+    "css-tree": "^3.2.1",
+    "freeze-dry": "^0.3.0",
+    "ora": "^9.3.0",
+    "playwright": "^1.59.1",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.2"
+  },
+  "devDependencies": {
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0"
+  }
+}
