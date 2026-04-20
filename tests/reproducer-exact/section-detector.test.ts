@@ -36,3 +36,20 @@ test('detectSection resolves the "hero" named alias to the hero section', async 
 
   await browser.close();
 });
+
+test('detectSection auto-detects via LCP when no selector is given', async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+  await page.goto(FIXTURE, { waitUntil: 'load' });
+
+  const candidate = await detectSection(page, {});
+
+  assert.strictEqual(candidate.method, 'lcp');
+  assert.ok(
+    candidate.selector.includes('hero') || candidate.selector.includes('h1'),
+    `expected hero-related selector, got ${candidate.selector}`
+  );
+  assert.ok(candidate.viewportCoverage > 0.2, `viewport coverage too low: ${candidate.viewportCoverage}`);
+
+  await browser.close();
+});
