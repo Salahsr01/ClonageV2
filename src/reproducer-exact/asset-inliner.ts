@@ -1,4 +1,30 @@
+import * as fs from 'fs';
+import { fileURLToPath } from 'url';
 import type { Page } from 'playwright';
+
+const MIME_BY_EXT: Record<string, string> = {
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.gif': 'image/gif',
+  '.ico': 'image/x-icon',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+};
+
+function mimeFromPath(p: string): string {
+  const dot = p.lastIndexOf('.');
+  if (dot < 0) return 'application/octet-stream';
+  return MIME_BY_EXT[p.slice(dot).toLowerCase()] || 'application/octet-stream';
+}
 
 export interface InlineResult {
   /** HTML fragment for <head> — contains an inlined @font-face <style> block, if any. */
@@ -103,9 +129,25 @@ export async function inlineAssets(page: Page, subtreeHtml: string): Promise<Inl
 }
 
 /**
- * Fetch a URL from the page context and return a base64 `data:` URL, or null on failure.
+ * Fetch a URL and return a base64 `data:` URL, or null on failure.
+ *
+ * For `file://` URLs we read from Node's `fs` — Chromium blocks cross-origin
+ * fetch() between file:// documents, so the browser path would always fail.
+ * For http(s) URLs we use the page's fetch (inherits the page origin).
  */
 async function fetchAsDataUrl(page: Page, url: string): Promise<string | null> {
+  if (url.startsWith('file://')) {
+    try {
+      const localPath = fileURLToPath(url);
+      if (!fs.existsSync(localPath)) return null;
+      const buf = fs.readFileSync(localPath);
+      const mime = mimeFromPath(localPath);
+      return `data:${mime};base64,${buf.toString('base64')}`;
+    } catch {
+      return null;
+    }
+  }
+
   try {
     return await page.evaluate(async (u) => {
       try {
@@ -113,7 +155,6 @@ async function fetchAsDataUrl(page: Page, url: string): Promise<string | null> {
         if (!res.ok) return null;
         const blob = await res.blob();
         const buf = await blob.arrayBuffer();
-        // Base64 encode
         let binary = '';
         const bytes = new Uint8Array(buf);
         for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
