@@ -43,11 +43,10 @@ All fields optional; missing fields skip the corresponding transformer.
   },
 
   "palette": {
-    "background": "#0F1A2B",
-    "text": "#F5E6C8",
-    "accent": "#C9A66B",
     "map": {
-      "rgb(17, 17, 17)": "#0F1A2B"
+      "rgb(17, 17, 17)": "#0F1A2B",
+      "rgb(245, 230, 200)": "#F5E6C8",
+      "rgba(201, 166, 107, 1)": "#C9A66B"
     }
   },
 
@@ -71,8 +70,7 @@ All fields optional; missing fields skip the corresponding transformer.
 ### Field semantics
 
 - **brand.name** — new brand text. **brand.source_name** — the literal string to match in the reproduction HTML. Both required if either present. Case-sensitive global text replacement within text nodes only (not in attribute values, not in CSS — a `brand.source_name` that matches a class name must not be touched).
-- **palette.background / text / accent** — the 3 role colors of the new brand. If `map` is absent, the transformer auto-clusters the source HTML's colors (top-1 most-frequent per role, see PaletteTransformer details) and maps them to these targets.
-- **palette.map** — explicit source-color → target-color overrides; takes precedence over auto-clustering for matched source colors.
+- **palette.map** — **the sole mechanism** for color substitution. Every color the user wants changed must have an explicit source→target entry. Colors not in the map are preserved as-is. No auto-clustering, no role inference. Source keys are matched after normalization (see PaletteTransformer details).
 - **typography.primary / display** — the 2 font roles. `.google: true` adds a `<link>` tag to `<head>` for the Google Font. `.family` is the CSS `font-family` value.
 - **copy** — array of text substitutions. Two forms:
   - `from`/`to`: literal text-node match and replace.
@@ -140,10 +138,7 @@ All fields optional; missing fields skip the corresponding transformer.
 export interface BrandBrief {
   brand?: { name: string; source_name: string };
   palette?: {
-    background?: string;
-    text?: string;
-    accent?: string;
-    map?: Record<string, string>;
+    map: Record<string, string>;
   };
   typography?: {
     primary?: { family: string; google?: boolean };
@@ -190,17 +185,12 @@ export interface RebrandResult {
 
 ### 2. PaletteTransformer
 
-- If `brief.palette` absent, skip.
-- Step 1: Extract all color values from `style="..."` attributes on every element. Normalize to `rgb()` form.
-- Step 2: Build the source palette:
-  - If `palette.map` covers ≥ 1 colors, apply those exact mappings first.
-  - For remaining source colors, cluster by role using a simple heuristic:
-    - Background roles: colors appearing in `background-color` or `background-image` (gradient stops).
-    - Text roles: colors appearing in `color`.
-    - Accent roles: colors that don't fit either above.
-  - Take the top-1 most-frequent color per role. Map to `palette.background` / `palette.text` / `palette.accent`.
-- Step 3: Rewrite every `style` attribute with the mapping applied.
-- Report: count of color-value substitutions; warnings for colors not mapped.
+- If `brief.palette` absent or `palette.map` is empty, skip.
+- **Strict mapping only — no auto-clustering, no role inference.**
+- Step 1: Normalize both keys and values of `palette.map` to a canonical form: lowercase `rgb(r, g, b)` or `rgba(r, g, b, a)`. Accept input keys in any common CSS form: `#fff`, `#ffffff`, `rgb(255,255,255)`, `rgb(255, 255, 255)`, `rgba(...)`, named colors (`white`, `black`, etc.). Build a normalized lookup table.
+- Step 2: Walk every element's `style` attribute. For each color value found (in `color`, `background-color`, `background-image` gradient stops, `border-color`, `box-shadow`, `outline-color`), normalize it and look it up in the table. If found, replace with the target value (preserving the user-written form from the brief as the output — so hex-input yields hex-output).
+- Step 3: If the source HTML contains colors that are NOT in the map, leave them untouched. Emit an info line in the transformer report showing the top-5 unmapped source colors (by frequency) so the user can extend the map on next run.
+- Report: count of color-value substitutions, plus the top-5 unmapped colors by frequency.
 
 ### 3. TypographyTransformer
 
@@ -295,8 +285,8 @@ No visual/pixel-diff verification in v1 (the output layout should be identical t
 
 ## Risks & Mitigations
 
-- **Risk:** Palette auto-clustering picks the "wrong" dominant color as the primary (e.g., clusters a border color as text).
-  - **Mitigation:** The `palette.map` explicit-override escape hatch always wins. Document this in CLI help and recommend `map` for edge cases. Plan a v1.1 follow-up with a `--report-palette-only` flag that prints the source palette without modifying, so the user can debug.
+- **Risk:** User doesn't know which source colors to map (they'd have to grep the HTML manually).
+  - **Mitigation:** The transformer report lists the top-5 unmapped source colors by frequency in `_rebrand.json`. First run with an empty `map` serves as a palette discovery pass: user runs once, reads the report, fills in the map, runs again. Plan a v1.1 `clonage rebrand-inspect <html>` helper that dumps the full source palette without transforming anything.
 - **Risk:** `brand.source_name` appears inside a selector-like string by coincidence (e.g., "Evolve" in a CSS class) and the global replace corrupts it.
   - **Mitigation:** Substitution happens **only in text nodes**, never in attributes. Also, the match is a case-sensitive exact-string match, so partial-word matches are the only risk. Worth documenting.
 - **Risk:** Google Fonts injection fails at runtime (font not available). The user sees fallback fonts.
