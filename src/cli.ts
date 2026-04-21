@@ -521,4 +521,29 @@ program
     }
   });
 
+// === REBRAND command (deterministic, LLM-free) ===
+program
+  .command('rebrand <html>')
+  .description('Appliquer un brand brief JSON a un HTML reproduit (nom, couleurs, typo, copy, images)')
+  .requiredOption('-b, --brief <path>', 'Chemin vers le brand brief JSON')
+  .option('-o, --output <path>', 'Fichier HTML de sortie (default: {basename}.rebranded.html)')
+  .action(async (htmlPath: string, options: any) => {
+    try {
+      const { loadBrief } = await import('./rebrand/brief.js');
+      const { rebrand } = await import('./rebrand/index.js');
+      const brief = loadBrief(path.resolve(options.brief));
+      const result = await rebrand({
+        inputHtml: path.resolve(htmlPath),
+        brief,
+        outputPath: options.output ? path.resolve(options.output) : undefined,
+      });
+      logger.info(`Output: ${result.outputHtml}`);
+      logger.info(`Metadata: ${result.metadataPath}`);
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 program.parse();
