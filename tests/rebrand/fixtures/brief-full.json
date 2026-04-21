@@ -1,0 +1,19 @@
+{
+  "brand": { "name": "Atelier Noma", "source_name": "Fixture Hero" },
+  "palette": {
+    "map": {
+      "rgb(42, 24, 16)": "#0F1A2B",
+      "#2a1810": "#0F1A2B"
+    }
+  },
+  "typography": {
+    "primary": { "family": "Inter", "google": true },
+    "display": { "family": "Playfair Display", "google": true }
+  },
+  "copy": [
+    { "from": "Fixture Hero Title", "to": "Nouveau Titre Principal" }
+  ],
+  "images": [
+    { "selector": ".hero-img", "to": "./assets/new-hero.jpg" }
+  ]
+}
