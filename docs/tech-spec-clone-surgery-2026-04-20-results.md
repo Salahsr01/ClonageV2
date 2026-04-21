@@ -3,7 +3,7 @@
 **Date:** 2026-04-20
 **Plan:** `docs/superpowers/plans/2026-04-20-clone-surgery-reproduction.md`
 **Spec:** `docs/tech-spec-clone-surgery-2026-04-20.md`
-**Commit:** ba55497 (post-e2e)
+**Commit:** 8051431 (post-v1.1 file:// fetch fix)
 
 ## Fixture baseline
 - Hero fixture at `tests/reproducer-exact/fixtures/sample-hero.html`: **0.00% pixel diff** at 1280×800.
@@ -12,7 +12,8 @@
 
 | Site | Section selector | Detection method | Viewport coverage | Fonts inlined | Images inlined | Diff score | Passed @ 5% | Notes |
 |---|---|---|---|---|---|---|---|---|
-| madeinevolve.com | `main > section:first-of-type` (default `hero` alias) | selector | 100.0% | 1/1 | 0/3 | 99.77% | ✗ | 3 image inlines failed; Webflow/Barba dynamic container; first `<section>` is an empty/hidden shell pre-animation. Retry with `header.section` gave identical 99.78% — root cause is asset resolution + dynamic content, not selector. |
+| madeinevolve.com (v1.0) | `main > section:first-of-type` | selector | 100.0% | 1/1 | 0/3 | 99.77% | ✗ | v1.0 baseline: 3 image inlines failed because Chromium blocks `fetch()` cross-origin on `file://`. |
+| madeinevolve.com (v1.1) | `main > section:first-of-type` | selector | 100.0% | 1/1 | **3/3** | **72.15%** | ✗ | v1.1 fix (Node `fs` fallback for `file://` URLs): all 3 images now inlined. Remaining 72% diff is GSAP slider state divergence — source has 1 slide visible at screenshot time, output renders all 3 `.slider_cms_img` elements per their computed styles. Static-capture limitation, not an inliner bug. |
 | mersi-architecture.com | `header` (fallback to `nav`) | selector | 7.1% | 4/4 | 0/0 | 0.00% | ✓ | Default `hero` alias failed — site has NO `<section>` elements (single `<main data-taxi>` SPA shell). `--section header` resolves to `<nav>` (76px tall top bar). Pixel-perfect but not a real hero; needs a container selector like `main > .home` for meaningful coverage. |
 | obsidianassembly.com | N/A | — | — | — | — | — | — | Clone directory contains only recorder output (`recording.har`, `screenshots/`, `metadata.json`) — no `index.html`. `reproduce-exact` is not applicable; this site is `replay`-only. |
 | jobyaviation.com | N/A | — | — | — | — | — | — | Same as obsidianassembly: recorder-only output (`extraction/`, `media/`, `recording.har`, `screenshots/`) — no rendered clone HTML. |
@@ -30,9 +31,20 @@
 - **`reproduce-exact` is inapplicable to recorder-only output.** Two of the five "cloned" directories (obsidianassembly, jobyaviation) contain only HAR + screenshots, not rendered HTML. We should either document this as a prerequisite, or have the CLI fail fast with a clear message ("no index.html found — is this a `clone` output or a `record` output?").
 - **Total runtime for the working runs:** ~9s + ~6s + ~9s ≈ 25 seconds wall-clock for 3 sites + 2 retries ≈ ~35s of actual browser work. Well under the budget.
 
+## v1.1 Update (2026-04-21)
+
+**Fix applied:** `src/reproducer-exact/asset-inliner.ts` — when a resolved URL starts with `file://`, the inliner now reads the file from Node's `fs` instead of calling `page.evaluate(fetch)` (Chromium treats each `file://` document as a unique origin and blocks cross-origin fetch on files). MIME type is inferred from file extension with a small lookup table.
+
+**Verified regression-free:** 24/24 tests still pass. E2E fixture: 0.00%. Mersi retained its 0.00% degenerate pass.
+
+**Remaining limitations on real sites (out of v1.1 scope):**
+- **Dynamic state capture** — animated sliders (GSAP SplitText, slider_cms_img carousels) render in one state on source, all states on static output. Would require waiting for timeline stability before snapshot, or an explicit "play all timelines then freeze" pre-pass.
+- **Hero auto-detection on Webflow/SPA sites** — the `hero` alias dead-ends on sites with no `<section>` or with a shell-before-hero pattern. Fix is heuristic enrichment (visibility filter, above-the-fold scoring).
+- **Recorder-output directories** — `reproduce-exact` needs a fail-fast "no index.html → try `replay` instead" guard.
+
 ## Next-Step Recommendations
 
-1. **Fix image URL resolution against the clone root.** The 3/3 image failures on madeinevolve are the single biggest fidelity regression. Audit how `InlineAssets` resolves `src` — absolute URLs, `/_next/static/...`, and `srcset` entries likely need a mapping table against the cloned asset manifest.
+1. ~~**Fix image URL resolution against the clone root.**~~ **DONE in v1.1** (file:// Node fs fallback).
 2. **Improve "hero" detection.** Don't trust `:first-of-type` blindly. At minimum:
    - Skip elements with `display: none`, `visibility: hidden`, `opacity: 0`, or zero rendered height.
    - Require the element to intersect the initial viewport (y < viewport.height).
