@@ -1,0 +1,27 @@
+:root {
+  --bg: #f5f0e6;
+  --fg: #1a1a1a;
+  --accent: #c9a66b;
+}
+
+@font-face {
+  font-family: 'TestFont';
+  src: url('./assets/font.woff2') format('woff2');
+}
+
+body { background: var(--bg); color: var(--fg); font-family: 'TestFont', sans-serif; }
+
+.hero-wrap { padding: 80px 24px; text-align: center; }
+.hero-wrap h1 { font-size: 64px; color: #1a1a1a; }
+.tagline { color: #c9a66b; }
+
+.services-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; padding: 80px 24px; }
+.service-item { background: #ffffff; padding: 24px; }
+
+.portfolio-grid { padding: 80px 24px; }
+.portfolio-grid a { display: block; margin-bottom: 24px; }
+
+.contact-block { padding: 80px 24px; background: #c9a66b; }
+.contact-block form { display: flex; gap: 12px; }
+
+.site-footer { padding: 24px; text-align: center; background: #1a1a1a; color: #f5f0e6; }

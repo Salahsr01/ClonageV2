@@ -546,4 +546,30 @@ program
     }
   });
 
+// === DEEP-EXTRACT command (static, KB v2 foundation) ===
+program
+  .command('deep-extract <cloneDir>')
+  .description('Extraire un clone en sections autonomes indexees dans .clonage-kb/')
+  .option('-s, --sections <n>', 'Nombre cible de sections (soft)', '6')
+  .option('-f, --force', 'Ecraser une entree KB existante')
+  .action(async (cloneDir: string, options: any) => {
+    try {
+      const { deepExtract } = await import('./deep-extract/index.js');
+      const result = await deepExtract({
+        cloneDir: path.resolve(cloneDir),
+        sectionsTarget: parseInt(options.sections, 10),
+        force: !!options.force,
+      });
+      logger.success(`KB ecrite: ${result.kbDir}`);
+      logger.info(`${result.index.sections.length} sections extraites`);
+      for (const s of result.index.sections) {
+        logger.dim(`  - ${s.role} (${(s.size_bytes / 1024).toFixed(1)} KB)`);
+      }
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 program.parse();
