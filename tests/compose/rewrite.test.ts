@@ -28,23 +28,32 @@ test('rewriteSection returns original when LLM returns empty', async () => {
   assert.ok(result.bodyHtml.includes('<h1>Hi</h1>'));
 });
 
-test('rewriteSection unwraps ```html fenced LLM response', async () => {
+test('rewriteSection applies JSON text-diff replacements', async () => {
   const sec = section('hero', '<!DOCTYPE html><html><body><h1>Old</h1></body></html>');
-  const fake = async () => '```html\n<!DOCTYPE html><html><body><h1>NEW</h1></body></html>\n```';
+  const fake = async () => JSON.stringify([{ id: 0, newText: 'NEW' }]);
   const result = await rewriteSection(sec, BRIEF, 's', fake);
   assert.strictEqual(result.usedLLM, true);
   assert.ok(result.bodyHtml.includes('<h1>NEW</h1>'));
 });
 
-test('rewriteSection strips DOCTYPE/html/head/body, keeps inner body content', async () => {
+test('rewriteSection keeps original when JSON is invalid', async () => {
   const sec = section('hero', '<!DOCTYPE html><html><body><h1>X</h1></body></html>');
-  const fake = async () =>
-    '<!DOCTYPE html><html><head><title>T</title></head><body><section>INNER</section></body></html>';
+  const fake = async () => 'NOT JSON';
   const result = await rewriteSection(sec, BRIEF, 's', fake);
-  assert.ok(result.bodyHtml.includes('<section>INNER</section>'));
-  assert.ok(!result.bodyHtml.includes('<!DOCTYPE'));
-  assert.ok(!result.bodyHtml.includes('<html'));
-  assert.ok(!result.bodyHtml.includes('<head>'));
+  assert.strictEqual(result.usedLLM, false);
+  assert.ok(result.bodyHtml.includes('<h1>X</h1>'));
+});
+
+test('rewriteSection keeps script tags intact after rewrite', async () => {
+  const sec = section(
+    'hero',
+    '<!DOCTYPE html><html><body><section><h1>Old</h1><script>window.__x=1</script></section></body></html>',
+  );
+  const fake = async () => JSON.stringify([{ id: 0, newText: 'Nova' }]);
+  const result = await rewriteSection(sec, BRIEF, 's', fake);
+  assert.strictEqual(result.usedLLM, true);
+  assert.ok(result.bodyHtml.includes('window.__x=1'));
+  assert.ok(result.bodyHtml.includes('<h1>Nova</h1>'));
 });
 
 test('extractBodyContent returns body inner when full document given', () => {

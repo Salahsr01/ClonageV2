@@ -57,7 +57,7 @@ test('compose with mock LLM produces an index.html + manifest', async () => {
 
   const mockLLM = async (_prompt: string, sec: any) => {
     const role = sec.meta.role;
-    return `<!DOCTYPE html><html><body><section class="${role}"><h1>NOVA-${role}</h1></section></body></html>`;
+    return JSON.stringify([{ id: 0, newText: `NOVA-${role}` }]);
   };
 
   const result = await compose({
@@ -104,7 +104,7 @@ test('compose manifest records per-section metadata', async () => {
   seedKB(kbRoot, 'source.com');
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-out-'));
 
-  const llm = async () => '<!DOCTYPE html><html><body><h1>X</h1></body></html>';
+  const llm = async () => JSON.stringify([{ id: 0, newText: 'X' }]);
   const result = await compose({
     baseSite: 'source.com',
     brief: BRIEF,

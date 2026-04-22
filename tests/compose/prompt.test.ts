@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { buildSectionPrompt } from '../../src/compose/prompt.js';
+import { buildSectionPrompt, buildTextDiffPrompt } from '../../src/compose/prompt.js';
 
 const BRIEF = {
   brandName: 'Atelier Noma',
@@ -41,4 +41,19 @@ test('buildSectionPrompt includes sector hint when given', () => {
     sector: 'architecture',
   });
   assert.ok(p.includes('architecture'));
+});
+
+test('buildTextDiffPrompt includes JSON-only constraints and text payload', () => {
+  const p = buildTextDiffPrompt({
+    brief: BRIEF,
+    sectionRole: 'hero',
+    sourceSite: 'x',
+    texts: [
+      { id: 0, text: 'Old title' },
+      { id: 1, text: 'Old subtitle' },
+    ],
+  });
+  assert.ok(p.includes('JSON valide'));
+  assert.ok(p.includes('"id": 0'));
+  assert.ok(p.includes('Old subtitle'));
 });
