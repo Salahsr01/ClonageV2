@@ -1,0 +1,27 @@
+{
+  "brand": {
+    "source_name": "Studio X",
+    "name": "Forma Studio"
+  },
+  "copy": [
+    {
+      "from": "We design innovative interiors for high performance ",
+      "to": "We craft spaces that inspire, perform, and endure "
+    },
+    {
+      "from": "Studio X — Commercial Interior Design | HK & Singapore",
+      "to": "Forma Studio — Commercial Interior Design | HK & Singapore"
+    },
+    {
+      "from": "Studio X designs high-performance commercial interiors for retail, workplace, and F&B businesses across Asia-Pacific. Based in Hong Kong and Singapore.",
+      "to": "Forma Studio crafts high-performance commercial spaces for retail, workplace, and F&B brands across Asia-Pacific. Based in Hong Kong and Singapore."
+    },
+    {
+      "from": "We are deliberately agnostic in style. There is no Studio X look to impose.",
+      "to": "We are deliberately agnostic in style. There is no Forma Studio look to impose."
+    }
+  ],
+  "palette": { "map": {} },
+  "typography": {},
+  "images": []
+}

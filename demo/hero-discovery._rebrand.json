@@ -1,0 +1,52 @@
+{
+  "inputHtml": "/Users/salah/Desktop/Clonage/generated/reproduce-exact/madeinevolve/main_section_first-of-type.html",
+  "outputHtml": "/Users/salah/Desktop/Clonage/demo/hero-discovery.html",
+  "brandName": null,
+  "reports": [
+    {
+      "name": "brand",
+      "applied": 0,
+      "skipped": 1,
+      "warnings": []
+    },
+    {
+      "name": "palette",
+      "applied": 0,
+      "skipped": 0,
+      "warnings": [
+        "palette.map is empty — no substitutions made. See topUnmapped for discovery."
+      ],
+      "info": {
+        "topUnmapped": [
+          [
+            "rgb(255, 255, 255)",
+            140
+          ],
+          [
+            "rgb(19, 19, 19)",
+            6
+          ]
+        ]
+      }
+    },
+    {
+      "name": "typography",
+      "applied": 0,
+      "skipped": 1,
+      "warnings": []
+    },
+    {
+      "name": "copy",
+      "applied": 0,
+      "skipped": 1,
+      "warnings": []
+    },
+    {
+      "name": "images",
+      "applied": 0,
+      "skipped": 1,
+      "warnings": []
+    }
+  ],
+  "timestamp": "2026-04-21T06:16:44.458Z"
+}

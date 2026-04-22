@@ -1,0 +1,18 @@
+{
+  "brand": {
+    "name": "ATELIER NOMA",
+    "source_name": "Fixture Hero Title"
+  },
+  "palette": {
+    "map": {
+      "rgb(42, 24, 16)": "#F5E6C8",
+      "#2a1810": "#F5E6C8",
+      "#f0e6d2": "#2A1810",
+      "#d4a574": "#8B5A2B"
+    }
+  },
+  "typography": {
+    "primary": { "family": "Cormorant Garamond", "google": true },
+    "display": { "family": "Playfair Display", "google": true }
+  }
+}

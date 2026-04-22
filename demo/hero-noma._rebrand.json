@@ -1,0 +1,44 @@
+{
+  "inputHtml": "/Users/salah/Desktop/Clonage/generated/reproduce-exact/madeinevolve/main_section_first-of-type.html",
+  "outputHtml": "/Users/salah/Desktop/Clonage/demo/hero-noma.html",
+  "brandName": "ATELIER NOMA",
+  "reports": [
+    {
+      "name": "brand",
+      "applied": 3,
+      "skipped": 0,
+      "warnings": []
+    },
+    {
+      "name": "palette",
+      "applied": 146,
+      "skipped": 0,
+      "warnings": [],
+      "info": {
+        "topUnmapped": []
+      }
+    },
+    {
+      "name": "typography",
+      "applied": 87,
+      "skipped": 0,
+      "warnings": []
+    },
+    {
+      "name": "copy",
+      "applied": 23,
+      "skipped": 0,
+      "warnings": [
+        "copy[2]: new text 1.6× longer than original (>1.5× threshold)",
+        "copy[4]: new text 1.5× longer than original (>1.5× threshold)"
+      ]
+    },
+    {
+      "name": "images",
+      "applied": 0,
+      "skipped": 1,
+      "warnings": []
+    }
+  ],
+  "timestamp": "2026-04-21T06:17:23.938Z"
+}

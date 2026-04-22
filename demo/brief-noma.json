@@ -1,0 +1,31 @@
+{
+  "brand": {
+    "name": "ATELIER NOMA",
+    "source_name": "LATEST PROJECT"
+  },
+  "palette": {
+    "map": {
+      "rgb(255, 255, 255)": "#F5E6C8",
+      "rgb(19, 19, 19)": "#2A1810"
+    }
+  },
+  "typography": {
+    "primary": { "family": "Cormorant Garamond", "google": true },
+    "display": { "family": "Playfair Display", "google": true }
+  },
+  "copy": [
+    { "from": "Brand Audit", "to": "Bois massif" },
+    { "from": "App Development", "to": "Tables sur mesure" },
+    { "from": "App Integration", "to": "Finition huile naturelle" },
+    { "from": "Shopify Plus Development", "to": "Restauration patrimoine" },
+    { "from": "CRO Testing", "to": "Ébénisterie d'art" },
+    { "from": "System Integration", "to": "Menuiserie contemporaine" },
+    { "from": "SEO Optimization", "to": "Sculpture sur bois" },
+    { "from": "AI-Powered Automation", "to": "Marqueterie traditionnelle" },
+    { "from": "CASE STUDY", "to": "RÉALISATION" },
+    { "from": "SHOPIFY PLUS", "to": "ATELIER PARIS" },
+    { "from": "PARTNER", "to": "ARTISAN" },
+    { "from": "PLATFORM", "to": "MATÉRIAU" },
+    { "from": "SERVICES", "to": "SAVOIR-FAIRE" }
+  ]
+}

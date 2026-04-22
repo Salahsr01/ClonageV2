@@ -3,8 +3,12 @@ dist/
 dist-test/
 output/
 generated/
+.clonage-kb/
+.playwright-mcp/
 .DS_Store
 *.log
+# screenshots de debug à la racine
+/*.png
 .env
 .env.local
 .env.*.local

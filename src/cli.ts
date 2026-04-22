@@ -572,4 +572,37 @@ program
     }
   });
 
+// === KB-COMPOSE command (Mode B: 1 clone = 1 skeleton, KB v2) ===
+program
+  .command('kb-compose')
+  .description('Composer un nouveau site a partir d\'un clone KB v2 (substitution LLM du contenu)')
+  .requiredOption('--base <site>', 'Nom du site source deja passe par deep-extract')
+  .requiredOption('--brand <path>', 'Chemin vers le brief JSON (brandName, industry, tagline, ...)')
+  .option('--sector <text>', 'Contexte metier injecte dans le prompt LLM')
+  .option('-o, --output <dir>', 'Dossier de sortie', 'generated/compose')
+  .action(async (options: any) => {
+    try {
+      const { compose } = await import('./compose/index.js');
+      const briefPath = path.resolve(options.brand);
+      if (!fs.existsSync(briefPath)) {
+        logger.error(`Brief non trouve: ${briefPath}`);
+        process.exit(1);
+      }
+      const brief = JSON.parse(fs.readFileSync(briefPath, 'utf-8'));
+      const outputDir = path.resolve(options.output);
+      const result = await compose({
+        baseSite: options.base,
+        brief,
+        sector: options.sector,
+        outputDir,
+        launchServer: false,
+      });
+      logger.info(`Output: ${result.indexPath}`);
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 program.parse();

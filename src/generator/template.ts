@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawnSync } from 'child_process';
 import { logger } from '../utils/logger.js';
+import { callLLM as callLLMShared } from '../utils/llm.js';
 
 export interface TemplateBrief {
   brandName: string;
@@ -149,123 +149,8 @@ ${html}
     return projectDir;
   }
 
-  /**
-   * Call Claude or HuggingFace, whichever is configured.
-   * Returns empty string if neither key is present.
-   */
   private async callLLM(prompt: string, projectDir: string): Promise<string> {
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    const hfToken = process.env.HF_TOKEN;
-
-    if (anthropicKey) {
-      logger.dim('  → Claude API...');
-      try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': anthropicKey,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
-            max_tokens: 16000,
-            messages: [{ role: 'user', content: prompt }],
-          }),
-        });
-        if (!res.ok) {
-          logger.warn(`Claude API ${res.status}: ${(await res.text()).substring(0, 200)}`);
-          return '';
-        }
-        const data = await res.json() as any;
-        const text = data.content?.[0]?.text || '';
-        fs.writeFileSync(path.join(projectDir, '_llm-response.txt'), text, 'utf-8');
-        return text;
-      } catch (err: any) {
-        logger.warn(`Claude call failed: ${err.message}`);
-        return '';
-      }
-    }
-
-    const claudeCli = process.env.CLAUDE_CLI_DISABLE ? '' : this.findClaudeCli();
-    if (claudeCli) {
-      logger.dim(`  → claude CLI (${claudeCli})...`);
-      try {
-        const res = spawnSync(claudeCli, ['-p', '--model', 'claude-sonnet-4-5'], {
-          input: prompt,
-          encoding: 'utf-8',
-          maxBuffer: 32 * 1024 * 1024,
-          timeout: 10 * 60 * 1000,
-        });
-        if (res.status !== 0) {
-          logger.warn(`claude CLI exit ${res.status}: ${(res.stderr || '').substring(0, 200)}`);
-        } else {
-          const text = (res.stdout || '').trim();
-          if (text) {
-            fs.writeFileSync(path.join(projectDir, '_llm-response.txt'), text, 'utf-8');
-            return text;
-          }
-        }
-      } catch (err: any) {
-        logger.warn(`claude CLI failed: ${err.message}`);
-      }
-    }
-
-    if (hfToken) {
-      const model = process.env.HF_MODEL || 'Qwen/Qwen2.5-Coder-32B-Instruct';
-      logger.dim(`  → HuggingFace ${model.split('/').pop()}...`);
-      try {
-        const res = await fetch('https://router.huggingface.co/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${hfToken}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: 'system', content: 'Tu es un expert en adaptation de templates HTML. Tu reponds UNIQUEMENT avec le HTML complet, sans commentaire ni explication.' },
-              { role: 'user', content: prompt },
-            ],
-            max_tokens: 16384,
-            temperature: 0.3,
-            top_p: 0.9,
-          }),
-        });
-        if (!res.ok) {
-          logger.warn(`HF API ${res.status}: ${(await res.text()).substring(0, 200)}`);
-          return '';
-        }
-        const data = await res.json() as any;
-        const text = data.choices?.[0]?.message?.content || '';
-        fs.writeFileSync(path.join(projectDir, '_llm-response.txt'), text, 'utf-8');
-        return text;
-      } catch (err: any) {
-        logger.warn(`HF call failed: ${err.message}`);
-        return '';
-      }
-    }
-
-    return '';
-  }
-
-  private findClaudeCli(): string {
-    const envPath = process.env.CLAUDE_CLI_PATH;
-    if (envPath && fs.existsSync(envPath)) return envPath;
-    const candidates = [
-      path.join(process.env.HOME || '', '.local/bin/claude'),
-      '/usr/local/bin/claude',
-      '/opt/homebrew/bin/claude',
-    ];
-    for (const c of candidates) {
-      if (c && fs.existsSync(c)) return c;
-    }
-    const which = spawnSync('which', ['claude'], { encoding: 'utf-8' });
-    if (which.status === 0) {
-      const p = (which.stdout || '').trim();
-      if (p && fs.existsSync(p)) return p;
-    }
-    return '';
+    return callLLMShared({ prompt, projectDir });
   }
 
   /**

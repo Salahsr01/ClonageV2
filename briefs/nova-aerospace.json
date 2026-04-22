@@ -1,0 +1,12 @@
+{
+  "brandName": "Nova Aerospace",
+  "industry": "startup de propulsion électrique pour aéronefs légers",
+  "tagline": "Silence, portée, précision",
+  "description": "Nova conçoit des groupes propulseurs électriques pour l'aviation de demain : plus silencieux, plus efficaces, plus durables.",
+  "services": ["Conception de moteurs", "Intégration cellule", "Certification", "Maintenance prédictive"],
+  "email": "contact@novaaerospace.example",
+  "projects": [
+    { "name": "Aetheris V1", "category": "moteur", "description": "moteur 150 kW ultra-silencieux" },
+    { "name": "Integration JOBY", "category": "intégration", "description": "cellule 6 places" }
+  ]
+}
