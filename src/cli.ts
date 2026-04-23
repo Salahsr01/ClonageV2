@@ -238,6 +238,95 @@ program
     }
   });
 
+// === ATLAS commands (S3 — RAG vectoriel) ===
+const atlasCmd = program
+  .command('atlas')
+  .description('Vector RAG index over grounded sections (§4.3)');
+
+atlasCmd
+  .command('index <kbSectionDir>')
+  .description('Indexer un dossier .clonage-kb/sections/<site>/ dans l\'atlas')
+  .requiredOption('-s, --site <name>', 'Identifiant du site (ex: mersi)')
+  .option('--atlas-path <path>', 'Chemin du fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .option('--no-replace', 'Append au lieu de remplacer les rows du site')
+  .action(async (kbSectionDir: string, options: any) => {
+    try {
+      const { indexSite, JsonlAtlasStore, loadDefaultEmbedder } = await import('./atlas/index.js');
+      const io = new JsonlAtlasStore(path.resolve(options.atlasPath));
+      const { indexed, skipped } = await indexSite({
+        kbSectionDir: path.resolve(kbSectionDir),
+        site: options.site,
+        io,
+        embedder: loadDefaultEmbedder(),
+        replaceForSite: options.replace !== false,
+      });
+      logger.success(`Atlas indexé: ${indexed} section(s) (${skipped} skipped)`);
+      logger.info(`Path: ${io.path}`);
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
+atlasCmd
+  .command('search <query...>')
+  .description('Recherche sémantique dans l\'atlas')
+  .option('-r, --role <role>', 'Filtre par rôle')
+  .option('-m, --mood <mood>', 'Filtre par mood (séparés par virgule)')
+  .option('-k, --top <n>', 'Top-K résultats', '5')
+  .option('--atlas-path <path>', 'Chemin du fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .action(async (queryParts: string[], options: any) => {
+    try {
+      const { query: atlasQuery, JsonlAtlasStore, loadDefaultEmbedder } = await import('./atlas/index.js');
+      const io = new JsonlAtlasStore(path.resolve(options.atlasPath));
+      const brief = queryParts.join(' ');
+      const hits = await atlasQuery(
+        {
+          brief,
+          roleFilter: options.role,
+          moodFilter: options.mood ? options.mood.split(',').map((m: string) => m.trim()) : undefined,
+          topK: parseInt(options.top, 10),
+        },
+        { io, embedder: loadDefaultEmbedder() },
+      );
+      if (hits.length === 0) {
+        logger.warn('Aucun résultat.');
+        process.exit(0);
+      }
+      logger.success(`${hits.length} hit(s) pour "${brief}"`);
+      for (const h of hits) {
+        console.log(
+          `  ${h.score.toFixed(3)}  ${h.entry.id}  [${h.entry.fiche.mood.join(',')}]  ${h.entry.fiche.signature.substring(0, 80)}`,
+        );
+      }
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
+atlasCmd
+  .command('stats')
+  .description('Stats de l\'atlas (nombre de rows, sites indexés, embedder)')
+  .option('--atlas-path <path>', 'Chemin du fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .action(async (options: any) => {
+    try {
+      const { stats, JsonlAtlasStore } = await import('./atlas/index.js');
+      const io = new JsonlAtlasStore(path.resolve(options.atlasPath));
+      const s = stats(io);
+      logger.info(`Path:      ${s.path}`);
+      logger.info(`Entries:   ${s.totalEntries}`);
+      logger.info(`Sites:     ${s.sites.join(', ') || '(none)'}`);
+      logger.info(`Embedder:  ${s.embedderIds.join(', ') || '(none)'}`);
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 /* =============================================================================
  * ARCHIVED COMMANDS — S1 of ScreenCoder refactor (REFACTOR_BRIEF.md §3)
  * =============================================================================
