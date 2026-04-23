@@ -443,6 +443,38 @@ program
     }
   });
 
+// === CLONE-AND-REBRAND command (end-to-end record → brief → rebrand → replay) ===
+program
+  .command('clone-and-rebrand <url>')
+  .description('End-to-end : record a URL, draft a brief via LLM, rebrand the HAR, open replay')
+  .requiredOption('--for <description>', 'Target brand description for the LLM')
+  .option('-o, --output <dir>', 'Output root', './output')
+  .option('-t, --timeout <ms>', 'Record timeout (ms)', '90000')
+  .option('--no-replay', 'Skip the Chromium replay at the end')
+  .action(async (url: string, options: any) => {
+    try {
+      const { cloneAndRebrand } = await import('./pipeline-rebrand.js');
+      const result = await cloneAndRebrand({
+        url,
+        targetDescription: options.for,
+        outputRoot: path.resolve(options.output),
+        recordTimeoutMs: parseInt(options.timeout, 10),
+        replayAfter: options.replay !== false,
+      });
+      logger.success(`Done.`);
+      logger.info(`Source clone: ${result.sourceCloneDir}`);
+      logger.info(`Brief:        ${result.briefPath}`);
+      logger.info(`Rebranded:    ${result.rebrandedCloneDir}`);
+      logger.info(
+        `  brief copy entries=${result.stats.briefCopyEntries} | HAR hits=${result.stats.harTotalHits} | entries modified=${result.stats.harEntriesModified}`,
+      );
+      // Replay keeps the browser open; the command doesn't return until Chromium closes.
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 // === BRIEF-GEN command (LLM drafts a rebrand brief from a clone) ===
 program
   .command('brief-gen <cloneDir>')
