@@ -443,6 +443,56 @@ program
     }
   });
 
+// === REBRAND-HAR command (HAR-based rebrand for SPA sites) ===
+//
+// Rewrites every text response inside a HAR (HTML + JS + CSS + SVG) with a
+// brand/copy brief, keeping binary assets (images, fonts, videos) untouched.
+// Output = a twin clone dir the user can open with `clonage replay`.
+//
+// Complements the static `rebrand` command which targets SSR-friendly HTML.
+program
+  .command('rebrand-har <cloneDir>')
+  .description('Rebrand a recorded clone (HAR) by rewriting strings in every text response')
+  .requiredOption('-b, --brief <path>', 'Path to the brief JSON (brand + copy)')
+  .option('-o, --output <dir>', 'Output clone dir (default: <cloneDir>-rebranded)')
+  .option('--replay', 'Launch `clonage replay` on the output after rebrand')
+  .action(async (cloneDir: string, options: any) => {
+    try {
+      const { rebrandClone } = await import('./rebrand-har/index.js');
+      const src = path.resolve(cloneDir);
+      if (!fs.existsSync(src)) {
+        logger.error(`Clone dir not found: ${src}`);
+        process.exit(1);
+      }
+      const out = options.output
+        ? path.resolve(options.output)
+        : src + '-rebranded';
+      const result = rebrandClone({
+        cloneDir: src,
+        outputCloneDir: out,
+        brief: path.resolve(options.brief),
+      });
+      logger.success(
+        `Rebrand HAR: ${result.entriesModified} entries, ${result.totalHits} total hits`,
+      );
+      for (const e of result.perEntry.slice(0, 10)) {
+        logger.dim(`  ${e.hits}× ${e.mime.padEnd(24)} ${e.url.substring(0, 60)}`);
+      }
+      logger.info(`Output: ${out}`);
+      if (options.replay) {
+        const { Replay } = await import('./replay/index.js');
+        const replay = new Replay({ recordingDir: out, notFound: 'fallback' });
+        await replay.start();
+      } else {
+        logger.info(`Next: clonage replay ${out}`);
+        process.exit(0);
+      }
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 // === COMPOSE command (S6 — full pipeline with validator + retry) ===
 program
   .command('compose')

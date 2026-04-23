@@ -1,0 +1,19 @@
+{
+  "brand": {
+    "source_name": "NAUGHTYDUK",
+    "name": "LUMEN STUDIO"
+  },
+  "copy": [
+    { "from": "DIGITAL INNOVATION STUDIO", "to": "ARCHITECTURE & DESIGN STUDIO" },
+    { "from": "Digital Innovation", "to": "Architecture Studio" },
+    { "from": "Entertainment", "to": "Architecture" },
+    { "from": "Manchester, UK", "to": "Marseille, FR" },
+    { "from": "The creative powerhouse behind the world's biggest entertainment brands", "to": "Le studio qui sculpte les identites architecturales de demain" },
+    { "from": "#f0f0f0", "to": "#0d2e5c" },
+    { "from": "#F0F0F0", "to": "#0d2e5c" },
+    { "from": "rgb(240 240 240", "to": "rgb(13 46 92" },
+    { "from": "rgb(240, 240, 240", "to": "rgb(13, 46, 92" },
+    { "from": "--nd-200: #f2f2f4", "to": "--nd-200: #1a4a8a" },
+    { "from": "--nd-300: #ececec", "to": "--nd-300: #0d2e5c" }
+  ]
+}
