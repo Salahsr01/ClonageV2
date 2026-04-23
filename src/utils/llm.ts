@@ -10,6 +10,24 @@ export interface CallLLMOptions {
   responseFile?: string;
   maxTokens?: number;
   silent?: boolean;
+  /**
+   * When true, throw LLMError on provider error or empty response instead of returning ''.
+   * The legacy generator/ module relies on the return-empty behavior, so default is false.
+   */
+  strict?: boolean;
+}
+
+export class LLMError extends Error {
+  readonly provider: string;
+  readonly status?: number;
+  readonly detail?: string;
+  constructor(provider: string, message: string, opts: { status?: number; detail?: string } = {}) {
+    super(`[${provider}] ${message}`);
+    this.name = 'LLMError';
+    this.provider = provider;
+    this.status = opts.status;
+    this.detail = opts.detail;
+  }
 }
 
 function findClaudeCli(): string {
@@ -49,9 +67,10 @@ function log(opts: CallLLMOptions, msg: string, level: 'dim' | 'warn' = 'dim') {
 }
 
 export async function callLLM(opts: CallLLMOptions): Promise<string> {
-  const { prompt, systemPrompt, maxTokens = 16000 } = opts;
+  const { prompt, systemPrompt, maxTokens = 16000, strict = false } = opts;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const hfToken = process.env.HF_TOKEN;
+  const errors: string[] = [];
 
   if (anthropicKey) {
     log(opts, '  → Claude API...');
@@ -75,16 +94,25 @@ export async function callLLM(opts: CallLLMOptions): Promise<string> {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        log(opts, `Claude API ${res.status}: ${(await res.text()).substring(0, 200)}`, 'warn');
-        return '';
+        const detail = (await res.text()).substring(0, 200);
+        log(opts, `Claude API ${res.status}: ${detail}`, 'warn');
+        if (strict) throw new LLMError('claude-api', `HTTP ${res.status}`, { status: res.status, detail });
+        errors.push(`claude-api HTTP ${res.status}`);
+      } else {
+        const data = (await res.json()) as any;
+        const text = data.content?.[0]?.text || '';
+        if (text) {
+          persist(text, opts);
+          return text;
+        }
+        if (strict) throw new LLMError('claude-api', 'empty response');
+        errors.push('claude-api empty response');
       }
-      const data = (await res.json()) as any;
-      const text = data.content?.[0]?.text || '';
-      persist(text, opts);
-      return text;
     } catch (err: any) {
+      if (err instanceof LLMError) throw err;
       log(opts, `Claude call failed: ${err.message}`, 'warn');
-      return '';
+      if (strict) throw new LLMError('claude-api', err.message || 'network error');
+      errors.push(`claude-api ${err.message}`);
     }
   }
 
@@ -101,16 +129,24 @@ export async function callLLM(opts: CallLLMOptions): Promise<string> {
         timeout: 10 * 60 * 1000,
       });
       if (res.status !== 0) {
-        log(opts, `claude CLI exit ${res.status}: ${(res.stderr || '').substring(0, 200)}`, 'warn');
+        const detail = (res.stderr || '').substring(0, 200);
+        log(opts, `claude CLI exit ${res.status}: ${detail}`, 'warn');
+        errors.push(`claude-cli exit ${res.status}`);
+        if (strict) throw new LLMError('claude-cli', `exit ${res.status}`, { detail });
       } else {
         const text = (res.stdout || '').trim();
         if (text) {
           persist(text, opts);
           return text;
         }
+        errors.push('claude-cli empty response');
+        if (strict) throw new LLMError('claude-cli', 'empty response');
       }
     } catch (err: any) {
+      if (err instanceof LLMError) throw err;
       log(opts, `claude CLI failed: ${err.message}`, 'warn');
+      errors.push(`claude-cli ${err.message}`);
+      if (strict) throw new LLMError('claude-cli', err.message || 'spawn failed');
     }
   }
 
@@ -141,18 +177,33 @@ export async function callLLM(opts: CallLLMOptions): Promise<string> {
         }),
       });
       if (!res.ok) {
-        log(opts, `HF API ${res.status}: ${(await res.text()).substring(0, 200)}`, 'warn');
-        return '';
+        const detail = (await res.text()).substring(0, 200);
+        log(opts, `HF API ${res.status}: ${detail}`, 'warn');
+        if (strict) throw new LLMError('huggingface', `HTTP ${res.status}`, { status: res.status, detail });
+        errors.push(`huggingface HTTP ${res.status}`);
+      } else {
+        const data = (await res.json()) as any;
+        const text = data.choices?.[0]?.message?.content || '';
+        if (text) {
+          persist(text, opts);
+          return text;
+        }
+        if (strict) throw new LLMError('huggingface', 'empty response');
+        errors.push('huggingface empty response');
       }
-      const data = (await res.json()) as any;
-      const text = data.choices?.[0]?.message?.content || '';
-      persist(text, opts);
-      return text;
     } catch (err: any) {
+      if (err instanceof LLMError) throw err;
       log(opts, `HF call failed: ${err.message}`, 'warn');
-      return '';
+      if (strict) throw new LLMError('huggingface', err.message || 'network error');
+      errors.push(`huggingface ${err.message}`);
     }
   }
 
+  if (strict) {
+    throw new LLMError(
+      'none',
+      errors.length ? `all providers failed: ${errors.join('; ')}` : 'no LLM provider configured',
+    );
+  }
   return '';
 }

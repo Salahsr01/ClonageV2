@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { buildInventory } from '../compose/inventory.js';
 import type { KBv2Index, SectionRole } from './types.js';
 
 export interface WriteKBParams {
@@ -9,6 +10,8 @@ export interface WriteKBParams {
   kbRoot?: string;
   force?: boolean;
   assetsSource?: string;
+  /** Emit a `<role>.inv.json` sidecar next to each section HTML. Default true. */
+  writeInventory?: boolean;
 }
 
 export function writeKB(params: WriteKBParams): { kbDir: string } {
@@ -23,9 +26,26 @@ export function writeKB(params: WriteKBParams): { kbDir: string } {
   fs.mkdirSync(kbDir, { recursive: true });
 
   fs.writeFileSync(indexPath, JSON.stringify(params.index, null, 2), 'utf-8');
+  const writeInv = params.writeInventory !== false;
   for (const sec of params.sections) {
     const file = path.join(kbDir, `${sec.role}.html`);
     fs.writeFileSync(file, sec.html, 'utf-8');
+    if (writeInv) {
+      try {
+        const inv = buildInventory(sec.html);
+        fs.writeFileSync(
+          path.join(kbDir, `${sec.role}.inv.json`),
+          JSON.stringify(
+            { role: sec.role, site: params.siteName, ...inv },
+            null,
+            2,
+          ),
+          'utf-8',
+        );
+      } catch {
+        // Inventory build is best-effort; failures don't block KB write.
+      }
+    }
   }
 
   if (params.assetsSource && fs.existsSync(params.assetsSource)) {

@@ -3,7 +3,8 @@ import assert from 'node:assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { compose } from '../../src/compose/index.js';
+import { compose, fallbackBrandSwap } from '../../src/compose/index.js';
+import type { LLMCall } from '../../src/compose/types.js';
 import type { KBv2Index } from '../../src/deep-extract/types.js';
 
 function seedKB(kbRoot: string, site: string) {
@@ -19,16 +20,16 @@ function seedKB(kbRoot: string, site: string) {
       {
         role: 'hero',
         file: 'hero.html',
-        size_bytes: 200,
+        size_bytes: 250,
         has_animation: false,
         dominant_classes: ['hero'],
-        text_excerpt: 'Old hero',
+        text_excerpt: 'Old hero headline',
         tags: [],
       },
       {
         role: 'footer',
         file: 'footer.html',
-        size_bytes: 100,
+        size_bytes: 120,
         has_animation: false,
         dominant_classes: ['footer'],
         text_excerpt: 'Old footer',
@@ -39,25 +40,63 @@ function seedKB(kbRoot: string, site: string) {
   fs.writeFileSync(path.join(dir, 'index.json'), JSON.stringify(idx, null, 2));
   fs.writeFileSync(
     path.join(dir, 'hero.html'),
-    '<!DOCTYPE html><html><head><style>.hero{padding:40px}</style></head><body><section class="hero"><h1>Old Brand Hero</h1></section></body></html>',
+    '<!DOCTYPE html><html lang="en"><head><title>Old Brand</title><style>.hero{padding:40px}</style></head><body><section class="hero"><h1>Old Brand Hero</h1><p>Old body text</p></section></body></html>',
   );
   fs.writeFileSync(
     path.join(dir, 'footer.html'),
-    '<!DOCTYPE html><html><head><style>.footer{color:#111}</style></head><body><footer><p>&copy; Old Brand</p></footer></body></html>',
+    '<!DOCTYPE html><html lang="en"><head><style>.footer{color:#111}</style></head><body><footer><p>Old Brand footer</p></footer></body></html>',
   );
   return dir;
 }
 
 const BRIEF = { brandName: 'Nova', industry: 'aerospace', tagline: 'Lift off' };
 
-test('compose with mock LLM produces an index.html + manifest', async () => {
-  const kbRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-'));
-  seedKB(kbRoot, 'source.com');
-  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-out-'));
+/** Mock LLM that patches every copy-block with a marker derived from the brand name. */
+function makeRewriteLLM(): LLMCall {
+  return async ({ prompt }) => {
+    if (/CANDIDATS\s*:/i.test(prompt)) {
+      // Select phase: keep original order
+      return '[{"idx": 0, "reason": "hero"}, {"idx": 1, "reason": "footer"}]';
+    }
+    const m = prompt.match(/"copyBlocks":\s*(\[[\s\S]*?\])/);
+    if (!m) return '{"copy":{}}';
+    const blocks = JSON.parse(m[1]) as Array<{ id: string }>;
+    const copy: Record<string, string> = {};
+    for (const b of blocks) copy[b.id] = `NOVA-${b.id}`;
+    return JSON.stringify({ copy });
+  };
+}
 
-  const mockLLM = async (_prompt: string, sec: any) => {
-    const role = sec.meta.role;
-    return `<!DOCTYPE html><html><body><section class="${role}"><h1>NOVA-${role}</h1></section></body></html>`;
+test('compose rewrites every section via LLM and writes index+manifest', async () => {
+  const kbRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-orch-'));
+  seedKB(kbRoot, 'source.com');
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-orch-out-'));
+
+  const result = await compose({
+    baseSite: 'source.com',
+    brief: BRIEF,
+    outputDir,
+    kbRoot,
+    llm: makeRewriteLLM(),
+    launchServer: false,
+  });
+
+  assert.ok(fs.existsSync(result.indexPath));
+  assert.ok(fs.existsSync(result.manifestPath));
+  const html = fs.readFileSync(result.indexPath, 'utf-8');
+  assert.ok(html.includes('NOVA-'), 'no NOVA-* marker — rewrite did not apply');
+  assert.ok(html.includes('</html>'));
+  assert.strictEqual(result.sections.length, 2);
+  assert.ok(result.sections.every((s) => s.outcome === 'llm'));
+});
+
+test('compose falls back to deterministic brand swap when LLM throws every retry', async () => {
+  const kbRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-fb-'));
+  seedKB(kbRoot, 'source.com');
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-fb-out-'));
+
+  const failingLLM: LLMCall = async () => {
+    throw new Error('boom');
   };
 
   const result = await compose({
@@ -65,52 +104,29 @@ test('compose with mock LLM produces an index.html + manifest', async () => {
     brief: BRIEF,
     outputDir,
     kbRoot,
-    llm: mockLLM,
+    llm: failingLLM,
     launchServer: false,
+    maxRetries: 2,
   });
 
-  assert.ok(fs.existsSync(result.indexPath));
-  assert.ok(fs.existsSync(result.manifestPath));
-  const html = fs.readFileSync(result.indexPath, 'utf-8');
-  assert.ok(html.includes('NOVA-hero'));
-  assert.ok(html.includes('NOVA-footer'));
-  assert.ok(html.includes('<!DOCTYPE html>'));
-  assert.ok(html.includes('</html>'));
   assert.strictEqual(result.sections.length, 2);
-  assert.ok(result.sections.every((s) => s.usedLLM));
+  assert.ok(result.sections.every((s) => s.outcome === 'fallback-rebrand'));
+  for (const s of result.sections) {
+    assert.ok(s.llmErrors.length >= 2, 'each failure attempt should be recorded');
+  }
 });
 
-test('compose keeps original section when LLM returns empty', async () => {
-  const kbRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-'));
+test('compose manifest records outcome, attempts, size, and validation', async () => {
+  const kbRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-mf-'));
   seedKB(kbRoot, 'source.com');
-  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-out-'));
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-mf-out-'));
 
-  const emptyLLM = async () => '';
   const result = await compose({
     baseSite: 'source.com',
     brief: BRIEF,
     outputDir,
     kbRoot,
-    llm: emptyLLM,
-    launchServer: false,
-  });
-  const html = fs.readFileSync(result.indexPath, 'utf-8');
-  assert.ok(html.includes('Old Brand Hero'), 'original hero text preserved');
-  assert.ok(result.sections.every((s) => !s.usedLLM));
-});
-
-test('compose manifest records per-section metadata', async () => {
-  const kbRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-'));
-  seedKB(kbRoot, 'source.com');
-  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-out-'));
-
-  const llm = async () => '<!DOCTYPE html><html><body><h1>X</h1></body></html>';
-  const result = await compose({
-    baseSite: 'source.com',
-    brief: BRIEF,
-    outputDir,
-    kbRoot,
-    llm,
+    llm: makeRewriteLLM(),
     launchServer: false,
   });
 
@@ -118,4 +134,53 @@ test('compose manifest records per-section metadata', async () => {
   assert.strictEqual(manifest.base_site, 'source.com');
   assert.strictEqual(manifest.brand_name, 'Nova');
   assert.strictEqual(manifest.sections.length, 2);
+  for (const s of manifest.sections) {
+    assert.ok(['llm', 'fallback-rebrand', 'unchanged'].includes(s.outcome));
+    assert.strictEqual(typeof s.attempts, 'number');
+    assert.strictEqual(typeof s.original_size, 'number');
+    assert.ok(Array.isArray(s.llm_errors));
+  }
+});
+
+test('compose skipSelect uses deterministic fallback selection', async () => {
+  const kbRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-skip-'));
+  seedKB(kbRoot, 'source.com');
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compose-skip-out-'));
+
+  // LLM that throws on select; we use skipSelect to bypass it.
+  let selectCalled = false;
+  const llm: LLMCall = async ({ prompt }) => {
+    if (/CANDIDATS\s*:/i.test(prompt)) {
+      selectCalled = true;
+      throw new Error('should not be called');
+    }
+    const m = prompt.match(/"copyBlocks":\s*(\[[\s\S]*?\])/);
+    if (!m) return '{"copy":{}}';
+    const blocks = JSON.parse(m[1]) as Array<{ id: string }>;
+    return JSON.stringify({ copy: Object.fromEntries(blocks.map((b) => [b.id, 'N'])) });
+  };
+
+  const result = await compose({
+    baseSite: 'source.com',
+    brief: BRIEF,
+    outputDir,
+    kbRoot,
+    llm,
+    skipSelect: true,
+    launchServer: false,
+  });
+
+  assert.strictEqual(selectCalled, false);
+  assert.strictEqual(result.sections.length, 2);
+});
+
+test('fallbackBrandSwap replaces repeated source tokens with brandName', () => {
+  const html =
+    '<html><head><title>Acme — industry</title></head><body><h1>Acme is great</h1><p>About Acme.</p><script>var Acme = 1;</script></body></html>';
+  const out = fallbackBrandSwap(html, 'Nova', 'hero');
+  assert.ok(out.includes('Nova is great'));
+  assert.ok(out.includes('About Nova'));
+  assert.ok(out.includes('<title>Nova'));
+  // Script content NEVER rewritten
+  assert.ok(out.includes('var Acme = 1'));
 });

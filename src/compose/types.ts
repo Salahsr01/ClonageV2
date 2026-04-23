@@ -1,4 +1,5 @@
 import type { KBv2Index, ExtractedSection } from '../deep-extract/types.js';
+import type { ValidationReport } from './validate.js';
 
 export interface ComposeBrief {
   brandName: string;
@@ -16,11 +17,21 @@ export interface ComposeOptions {
   sector?: string;
   outputDir: string;
   kbRoot?: string;
-  llm?: LLMFunction;
+  llm?: LLMCall;
   launchServer?: boolean;
+  /** Max retries when validation rejects a rewrite. Default 3. */
+  maxRetries?: number;
+  /** Disable the LLM selection phase and use the deterministic fallback. Default false. */
+  skipSelect?: boolean;
+  /** Target number of sections after selection. Default = all available. */
+  targetSectionCount?: number;
 }
 
-export type LLMFunction = (prompt: string, section: LoadedSection) => Promise<string>;
+export type LLMCall = (args: {
+  prompt: string;
+  maxTokens?: number;
+  tag?: string;
+}) => Promise<string>;
 
 export interface LoadedSection {
   meta: ExtractedSection;
@@ -34,12 +45,18 @@ export interface LoadedKB {
   sections: LoadedSection[];
 }
 
+export type RewriteOutcome = 'llm' | 'fallback-rebrand' | 'unchanged';
+
 export interface RewrittenSection {
   role: string;
+  site: string;
   originalSize: number;
   rewrittenSize: number;
-  usedLLM: boolean;
+  outcome: RewriteOutcome;
+  attempts: number;
   bodyHtml: string;
+  validation: ValidationReport | null;
+  llmErrors: string[];
 }
 
 export interface ComposeResult {
@@ -56,5 +73,14 @@ export interface ComposeManifest {
   industry: string;
   sector?: string;
   composed_at: string;
-  sections: Array<{ role: string; used_llm: boolean; original_size: number; rewritten_size: number }>;
+  sections: Array<{
+    role: string;
+    site: string;
+    outcome: RewriteOutcome;
+    attempts: number;
+    original_size: number;
+    rewritten_size: number;
+    validation: { ok: boolean; errors: string[] } | null;
+    llm_errors: string[];
+  }>;
 }

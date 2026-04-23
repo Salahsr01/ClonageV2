@@ -605,4 +605,45 @@ program
     }
   });
 
+// === REBRAND-AI command (full-page, preserves scripts/fonts/animations) ===
+program
+  .command('rebrand-ai <cloneHtml>')
+  .description('Rebrand IA d\'un clone/reproduit entier (text-diff, preserve scripts, fonts, animations)')
+  .requiredOption('--brand <path>', 'Chemin vers le brief JSON (brandName, industry, tagline, ...)')
+  .option('--sector <text>', 'Contexte metier injecte dans le prompt LLM')
+  .option('-o, --output <dir>', 'Dossier de sortie', 'generated/rebrand-ai')
+  .option('--chunk <n>', 'Taille de chunk (copyBlocks par appel LLM)', '40')
+  .option('--retries <n>', 'Retries LLM par chunk', '2')
+  .option('--serve', 'Lancer un serveur de preview apres la generation')
+  .action(async (cloneHtml: string, options: any) => {
+    try {
+      const { rebrandAi } = await import('./rebrand-ai/index.js');
+      const briefPath = path.resolve(options.brand);
+      if (!fs.existsSync(briefPath)) {
+        logger.error(`Brief non trouve: ${briefPath}`);
+        process.exit(1);
+      }
+      const brief = JSON.parse(fs.readFileSync(briefPath, 'utf-8'));
+      const outputDir = path.resolve(options.output);
+      const result = await rebrandAi({
+        inputHtml: path.resolve(cloneHtml),
+        brief,
+        outputDir,
+        sector: options.sector,
+        chunkSize: parseInt(options.chunk, 10),
+        maxRetries: parseInt(options.retries, 10),
+      });
+      logger.info(`Output: ${result.outputHtml}`);
+      if (options.serve) {
+        const { startServer } = await import('./server.js');
+        startServer(outputDir);
+      } else {
+        process.exit(0);
+      }
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 program.parse();
