@@ -443,6 +443,40 @@ program
     }
   });
 
+// === BRIEF-GEN command (LLM drafts a rebrand brief from a clone) ===
+program
+  .command('brief-gen <cloneDir>')
+  .description('LLM drafts a rebrand-har brief from a recorded clone + target description')
+  .requiredOption('--for <description>', 'Short description of the target brand ("architecture studio moody minimal à Marseille")')
+  .option('-o, --output <path>', 'Where to write the brief JSON', 'briefs/auto.json')
+  .option('--screenshot <path>', 'Override the screenshot sent to the VLM')
+  .action(async (cloneDir: string, options: any) => {
+    try {
+      const { generateBrief, writeBrief } = await import('./brief-gen/index.js');
+      const src = path.resolve(cloneDir);
+      if (!fs.existsSync(src)) {
+        logger.error(`Clone dir not found: ${src}`);
+        process.exit(1);
+      }
+      const result = await generateBrief({
+        cloneDir: src,
+        targetDescription: options.for,
+        screenshotPath: options.screenshot ? path.resolve(options.screenshot) : undefined,
+      });
+      const out = path.resolve(options.output);
+      writeBrief(result.brief, out);
+      logger.success(`Brief written: ${out}`);
+      logger.info(`  brand.source_name: ${result.brief.brand?.source_name ?? '(none)'}`);
+      logger.info(`  brand.name:        ${result.brief.brand?.name ?? '(none)'}`);
+      logger.info(`  copy entries:      ${result.brief.copy.length}`);
+      logger.info(`Next: clonage rebrand-har ${src} -b ${out} --replay`);
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 // === REBRAND-HAR command (HAR-based rebrand for SPA sites) ===
 //
 // Rewrites every text response inside a HAR (HTML + JS + CSS + SVG) with a
