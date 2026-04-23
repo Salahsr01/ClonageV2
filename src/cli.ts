@@ -327,6 +327,71 @@ atlasCmd
     }
   });
 
+// === PLAN command (S4 — Planning agent with Approval Mode) ===
+//
+// CRITICAL: this command runs ONLY Planning. It does NOT chain to Generation.
+// The plan is printed + written to disk so the user can edit _plan.json
+// before running `clonage generate <plan.json>` (S5).
+program
+  .command('plan')
+  .description('Compose un plan de site à partir d\'un brief et de l\'atlas (§4.4 approval mode)')
+  .requiredOption('-b, --brief <path>', 'Chemin vers le brief JSON')
+  .option('-o, --output <path>', 'Chemin de sortie _plan.json', 'generated/<brand>/_plan.json')
+  .option('--atlas-path <path>', 'Fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .option('--top <n>', 'Top-K candidats par rôle', '5')
+  .option('--roles <list>', 'Rôles séparés par virgules (default: canoniques)', '')
+  .action(async (options: any) => {
+    try {
+      const briefPath = path.resolve(options.brief);
+      if (!fs.existsSync(briefPath)) {
+        logger.error(`Brief non trouvé: ${briefPath}`);
+        process.exit(1);
+      }
+      const brief = JSON.parse(fs.readFileSync(briefPath, 'utf-8'));
+      const brandName =
+        (brief.brandName as string) ||
+        (brief.name as string) ||
+        (brief.brand && (brief.brand as any).name) ||
+        'brand';
+      const brandSlug = brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+      const outPath =
+        options.output === 'generated/<brand>/_plan.json'
+          ? path.resolve('generated', brandSlug, '_plan.json')
+          : path.resolve(options.output);
+
+      const { plan, writePlan, renderPlanTable } = await import('./agents/planning/index.js');
+      const { JsonlAtlasStore, loadDefaultEmbedder } = await import('./atlas/index.js');
+      const { loadDefaultTextLLM } = await import('./agents/planning/llm.js');
+
+      const io = new JsonlAtlasStore(path.resolve(options.atlasPath));
+      const embedder = loadDefaultEmbedder();
+      const llm = loadDefaultTextLLM();
+
+      const result = await plan({
+        brief,
+        io,
+        embedder,
+        llm,
+        topKPerRole: parseInt(options.top, 10),
+        roles: options.roles ? options.roles.split(',').map((s: string) => s.trim()) : undefined,
+      });
+
+      writePlan(result.plan, outPath);
+
+      console.log('');
+      console.log(renderPlanTable(result.plan, result.candidates));
+      console.log('');
+      logger.success(`Plan written: ${outPath}`);
+      logger.info('Edit the plan if needed, then run: clonage generate <plan.json>');
+      logger.warn('(plan approval mode — Generation is NOT launched automatically)');
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 /* =============================================================================
  * ARCHIVED COMMANDS — S1 of ScreenCoder refactor (REFACTOR_BRIEF.md §3)
  * =============================================================================
