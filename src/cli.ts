@@ -443,6 +443,51 @@ program
     }
   });
 
+// === COMPOSE command (S6 — full pipeline with validator + retry) ===
+program
+  .command('compose')
+  .description('Full pipeline: plan → generate → validate (retry cap 3)')
+  .requiredOption('-b, --brief <path>', 'Brief JSON')
+  .option('-o, --output <dir>', 'Dossier de sortie', 'generated/<brand>')
+  .option('--atlas-path <path>', 'Fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .option('--max-retries <n>', 'Retry cap (§4.6)', '3')
+  .option('--plan-only', 'Run Planning only, skip Generation + Validation')
+  .action(async (options: any) => {
+    try {
+      const briefPath = path.resolve(options.brief);
+      const brief = JSON.parse(fs.readFileSync(briefPath, 'utf-8'));
+      const brandName =
+        (brief.brandName as string) ||
+        (brief.name as string) ||
+        (brief.brand && (brief.brand as any).name) ||
+        'brand';
+      const brandSlug = brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const outputDir =
+        options.output === 'generated/<brand>'
+          ? path.resolve('generated', brandSlug)
+          : path.resolve(options.output);
+
+      const { compose } = await import('./pipeline-compose.js');
+      const result = await compose({
+        brief,
+        outputDir,
+        atlasPath: path.resolve(options.atlasPath),
+        maxRetries: parseInt(options.maxRetries, 10),
+        planOnly: !!options.planOnly,
+      });
+
+      if (result.failureReportPath) {
+        logger.error(`Failure report: ${result.failureReportPath}`);
+        process.exit(1);
+      }
+      if (result.outputHtml) logger.success(`Output: ${result.outputHtml}`);
+      process.exit(result.passed ? 0 : 1);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 /* =============================================================================
  * ARCHIVED COMMANDS — S1 of ScreenCoder refactor (REFACTOR_BRIEF.md §3)
  * =============================================================================
