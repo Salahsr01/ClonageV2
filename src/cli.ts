@@ -5,8 +5,10 @@ import { cloneSite } from './pipeline.js';
 import { Recorder } from './recorder/index.js';
 import { Replay } from './replay/index.js';
 import { Analyzer } from './analyzer/index.js';
-import { KnowledgeBase } from './knowledge/index.js';
-import { Generator } from './generator/index.js';
+// ARCHIVED in S1 (REFACTOR_BRIEF.md §3) — see _archive/ and git log for original code:
+//   - src/knowledge/       → import { KnowledgeBase } from './knowledge/index.js';
+//   - src/generator/       → import { Generator }     from './generator/index.js';
+// TODO: rewire to agents/ in S4-S5 (Planning + Generation agents will replace these)
 import { logger } from './utils/logger.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,7 +18,7 @@ const program = new Command();
 program
   .name('clonage')
   .description('Clone vivant + analyse + generation de sites Awwwards')
-  .version('3.0.0');
+  .version('3.1.0-refactor');
 
 // === CLONE command ===
 program
@@ -26,30 +28,17 @@ program
   .option('-m, --max-pages <n>', 'Nombre maximum de pages', '50')
   .option('-w, --width <n>', 'Largeur du viewport', '1920')
   .option('-t, --timeout <ms>', 'Timeout par page (ms)', '30000')
-  .option('--analyze', 'Analyser et indexer automatiquement après le clonage')
+  // --analyze flag removed in S1 — needed KnowledgeBase (archived).
+  // TODO: replace with --ground flag (feeds grounding agent) in S2-S3.
   .action(async (url: string, options: any) => {
     try {
-      const outputDir = await cloneSite({
+      await cloneSite({
         url,
         outputDir: options.output,
         maxPages: parseInt(options.maxPages, 10),
         viewports: [{ name: 'desktop', width: parseInt(options.width, 10), height: 1080 }],
         timeout: parseInt(options.timeout, 10),
       });
-
-      // Auto-analyze if requested
-      if (options.analyze) {
-        console.log('');
-        const analyzer = new Analyzer(outputDir);
-        const analysis = await analyzer.analyze();
-        const kb = new KnowledgeBase();
-        kb.ingest(analysis);
-
-        // Save analysis
-        const analysisPath = path.join(outputDir, '_analysis.json');
-        fs.writeFileSync(analysisPath, JSON.stringify(analysis, null, 2));
-        logger.success(`Analyse sauvegardée: ${analysisPath}`);
-      }
     } catch (err: any) {
       logger.error(err.message);
       process.exit(1);
@@ -106,7 +95,7 @@ program
     }
   });
 
-// === EXTRACT command (v3.0 Deep Extraction) ===
+// === EXTRACT command (deep-extractor — tokens/animations/components) ===
 program
   .command('extract <directory>')
   .description('Extraction profonde des tokens, animations et composants depuis un enregistrement')
@@ -142,60 +131,10 @@ program
     }
   });
 
-// NOTE: The old `regenerate` command (Regenerator 6-pass from-scratch IA)
-// was removed in v3.1. It produced generic, Awwwards-unworthy output
-// (validation score 52/100) and conflicts with the feedback documented in
-// memory/feedback_generation.md. For same-site-new-content use `template`
-// or `reskin` instead; for new-site generation the approach is
-// clone-as-template, not from-scratch LLM output.
-
-// === REPRODUCE command (v3.1 — deterministic, computed-styles, no AI) ===
-// Replaces the old AI-chunked Regenerator.reproduce() which scored 52/100
-// and lost ~85% of the DOM info. See src/reproducer/index.ts for rationale.
-program
-  .command('reproduce <directory>')
-  .description('Reproduire fidèlement un site à partir de son enregistrement (computed styles, déterministe)')
-  .option('-o, --output <dir>', 'Dossier de sortie', './generated')
-  .action(async (directory: string, options: any) => {
-    try {
-      const { Reproducer } = await import('./reproducer/index.js');
-
-      const dir = path.resolve(directory);
-      if (!fs.existsSync(dir)) {
-        logger.error(`Dossier non trouvé: ${dir}`);
-        process.exit(1);
-      }
-
-      // Read metadata for domain name
-      const metadataPath = path.join(dir, 'metadata.json');
-      const metadata = fs.existsSync(metadataPath)
-        ? JSON.parse(fs.readFileSync(metadataPath, 'utf-8'))
-        : { domain: 'site' };
-
-      const outDir = path.join(path.resolve(options.output), `reproduce-${metadata.domain}`);
-
-      const reproducer = new Reproducer({
-        recordingDir: dir,
-        outputDir: outDir,
-        simplifyClasses: true,
-        inlineStyles: true,
-      });
-
-      const outputPath = await reproducer.reproduce();
-
-      // Open in browser
-      const { startServer } = await import('./server.js');
-      startServer(path.dirname(outputPath));
-    } catch (err: any) {
-      logger.error(err.message);
-      process.exit(1);
-    }
-  });
-
-// === ANALYZE command ===
+// === ANALYZE command (keeps section-extractor; KnowledgeBase indexing removed) ===
 program
   .command('analyze <directory>')
-  .description('Analyser un site cloné et l\'indexer dans la knowledge base')
+  .description('Analyser un site cloné (section-extractor — KB indexing désactivé post-refactor)')
   .action(async (directory: string) => {
     try {
       const dir = path.resolve(directory);
@@ -207,288 +146,15 @@ program
       const analyzer = new Analyzer(dir);
       const analysis = await analyzer.analyze();
 
-      // Index in knowledge base
-      const kb = new KnowledgeBase();
-      kb.ingest(analysis);
-
-      // Save analysis
       const analysisPath = path.join(dir, '_analysis.json');
       fs.writeFileSync(analysisPath, JSON.stringify(analysis, null, 2));
       logger.success(`Analyse sauvegardée: ${analysisPath}`);
-
-      // Show stats
-      const stats = kb.getStats();
-      console.log('');
-      logger.info(`Knowledge Base: ${stats.sites} sites, ${stats.sections} sections, ${stats.animations} animations, ${stats.components} composants`);
+      logger.warn('KnowledgeBase indexing disabled — archived in S1. TODO: rewire to atlas/ in S3.');
     } catch (err: any) {
       logger.error(err.message);
       process.exit(1);
     }
   });
-
-// === SEARCH command ===
-program
-  .command('search <query>')
-  .description('Rechercher des patterns dans la knowledge base')
-  .option('-t, --type <type>', 'Type (section, animation, component, tokens)')
-  .option('-n, --limit <n>', 'Nombre de résultats', '10')
-  .action((query: string, options: any) => {
-    const kb = new KnowledgeBase();
-    const results = kb.search(query, options.type, parseInt(options.limit, 10));
-
-    if (results.length === 0) {
-      logger.warn('Aucun résultat trouvé.');
-      return;
-    }
-
-    logger.success(`${results.length} résultats pour "${query}":`);
-    for (const r of results) {
-      console.log(`  [${r.type}] ${r.domain} → ${r.tags.join(', ')}`);
-      if (r.type === 'section') {
-        console.log(`    ${(r.content as any).textContent?.substring(0, 100) || ''}`);
-      }
-    }
-  });
-
-// === GENERATE command ===
-program
-  .command('generate')
-  .description('Générer un site web à partir d\'un brief')
-  .requiredOption('-b, --brief <text>', 'Description du site à générer')
-  .option('-s, --style <style>', 'Style visuel (dark-luxury, light-minimal, bold-creative)')
-  .option('--sections <list>', 'Sections séparées par des virgules', 'hero,features,portfolio,testimonials,contact,footer')
-  .option('-o, --output <dir>', 'Dossier de sortie', './generated')
-  .action(async (options: any) => {
-    try {
-      const generator = new Generator(options.output);
-      const brief = {
-        description: options.brief,
-        style: options.style,
-        sections: options.sections.split(',').map((s: string) => s.trim()),
-        animations: true,
-      };
-
-      await generator.generate(brief);
-    } catch (err: any) {
-      logger.error(err.message);
-      process.exit(1);
-    }
-  });
-
-// === KB STATS command ===
-program
-  .command('kb')
-  .description('Afficher les stats de la knowledge base')
-  .action(() => {
-    const kb = new KnowledgeBase();
-    const stats = kb.getStats();
-    const sites = kb.getSiteSummaries();
-
-    logger.banner();
-    logger.info('Knowledge Base Stats:');
-    console.log(`  Sites indexés:  ${stats.sites}`);
-    console.log(`  Sections:       ${stats.sections}`);
-    console.log(`  Animations:     ${stats.animations}`);
-    console.log(`  Composants:     ${stats.components}`);
-    console.log('');
-
-    if (sites.length > 0) {
-      logger.info('Sites indexés:');
-      for (const s of sites) {
-        console.log(`  ${s.domain} — ${s.summary.vibe} | ${s.summary.primaryFont} | ${s.summary.techStack.join(', ')}`);
-      }
-    }
-  });
-
-// === COMPOSE command ===
-program
-  .command('compose')
-  .description('Composer un site à partir de vraies sections de sites clonés')
-  .requiredOption('-t, --title <text>', 'Nom du site')
-  .option('-d, --description <text>', 'Description', '')
-  .option('-s, --sections <list>', 'Sections (type:domain,...)', 'hero,portfolio,about,contact,footer')
-  .option('-o, --output <dir>', 'Dossier de sortie', './generated')
-  .action(async (options: any) => {
-    try {
-      const { Composer } = await import('./generator/composer.js');
-      const { startServer } = await import('./server.js');
-
-      const composer = new Composer();
-      composer.loadFromOutput('./output');
-
-      // Show available sections
-      const available = composer.listAvailable();
-      logger.info('Sections disponibles:');
-      for (const a of available) {
-        console.log(`  ${a.type} (${a.count}) — ${a.domains.join(', ')}`);
-      }
-      console.log('');
-
-      // Parse section picks
-      const sectionPicks = options.sections.split(',').map((s: string) => {
-        const parts = s.trim().split(':');
-        return { type: parts[0], from: parts[1] };
-      });
-
-      const brief = {
-        title: options.title,
-        description: options.description,
-        sections: sectionPicks,
-      };
-
-      const html = composer.compose(brief);
-
-      // Save
-      const fs = await import('fs');
-      const path = await import('path');
-      const slug = options.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      const outDir = path.join(options.output, `composed-${slug}`);
-      fs.mkdirSync(outDir, { recursive: true });
-      fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf-8');
-
-      // Copy assets from all used clone dirs
-      const outputBase = path.resolve('./output');
-      const cloneDirs = fs.readdirSync(outputBase)
-        .filter((d: string) => fs.statSync(path.join(outputBase, d)).isDirectory())
-        .filter((d: string) => fs.existsSync(path.join(outputBase, d, 'index.html')));
-
-      for (const dir of cloneDirs) {
-        const assetsDir = path.join(outputBase, dir, 'assets');
-        if (fs.existsSync(assetsDir)) {
-          // Symlink assets for quick access
-          const targetLink = path.join(outDir, `assets-${dir.split('_')[0]}`);
-          if (!fs.existsSync(targetLink)) {
-            fs.symlinkSync(assetsDir, targetLink, 'dir');
-          }
-        }
-      }
-
-      // Also create a merged styles.css
-      const cssFiles = cloneDirs
-        .map((d: string) => path.join(outputBase, d, 'styles.css'))
-        .filter((f: string) => fs.existsSync(f));
-      const mergedCss = cssFiles.map((f: string) => fs.readFileSync(f, 'utf-8')).join('\n\n');
-      fs.writeFileSync(path.join(outDir, 'styles.css'), mergedCss, 'utf-8');
-
-      logger.success(`Site composé: ${outDir}/index.html`);
-
-      // Launch server
-      startServer(outDir);
-    } catch (err: any) {
-      logger.error(err.message);
-      process.exit(1);
-    }
-  });
-
-// === RESKIN command ===
-program
-  .command('reskin <source>')
-  .description('Reskin un site cloné : même structure/animations, nouveau contenu/couleurs')
-  .requiredOption('-n, --name <text>', 'Nouveau nom de marque')
-  .option('-r, --replacements <json>', 'Remplacements texte en JSON ({"ancien":"nouveau",...})')
-  .option('-c, --colors <json>', 'Overrides couleurs en JSON ({"#ancien":"#nouveau",...})')
-  .option('-f, --fonts <json>', 'Overrides fonts en JSON ({"AncienneFont":"NouvelleFont",...})')
-  .option('-o, --output <dir>', 'Dossier de sortie', './generated')
-  .action(async (source: string, options: any) => {
-    try {
-      const { Reskin } = await import('./generator/reskin.js');
-      const { startServer } = await import('./server.js');
-
-      const sourcePath = path.resolve(source);
-      if (!fs.existsSync(sourcePath)) {
-        logger.error(`Clone non trouvé: ${sourcePath}`);
-        process.exit(1);
-      }
-
-      const slug = options.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      const outDir = path.join(path.resolve(options.output), `reskin-${slug}`);
-
-      // Parse JSON options
-      let replacements: Record<string, string> = {};
-      let colors: Record<string, string> | undefined;
-      let fonts: Record<string, string> | undefined;
-
-      if (options.replacements) {
-        try { replacements = JSON.parse(options.replacements); } catch { logger.warn('JSON replacements invalide'); }
-      }
-
-      if (options.colors) {
-        try { colors = JSON.parse(options.colors); } catch { logger.warn('JSON colors invalide'); }
-      }
-
-      if (options.fonts) {
-        try { fonts = JSON.parse(options.fonts); } catch { logger.warn('JSON fonts invalide'); }
-      }
-
-      const reskin = new Reskin({
-        sourceClone: sourcePath,
-        outputDir: outDir,
-        brandName: options.name,
-        textReplacements: replacements,
-        colorOverrides: colors,
-        fontOverrides: fonts,
-      });
-
-      const resultDir = await reskin.execute();
-      startServer(resultDir);
-    } catch (err: any) {
-      logger.error(err.message);
-      process.exit(1);
-    }
-  });
-
-// === TEMPLATE command (v3.1 — clone-as-template + auto text rewrite via LLM) ===
-program
-  .command('template <cloneDir>')
-  .description('Cloner un site comme template, puis reecrire le texte via IA (structure/CSS/JS intacts)')
-  .requiredOption('-n, --name <text>', 'Nom de la marque')
-  .requiredOption('-i, --industry <text>', 'Secteur (ex: agence de design)')
-  .option('-t, --tagline <text>', 'Tagline', '')
-  .option('-d, --description <text>', 'Description longue', '')
-  .option('-s, --services <list>', 'Services separes par des virgules', '')
-  .option('-e, --email <email>', 'Email de contact', 'contact@example.com')
-  .option('--projects <json>', 'Projets en JSON [{name,category,description},...]', '[]')
-  .option('-o, --output <dir>', 'Dossier de sortie', './generated')
-  .action(async (cloneDir: string, options: any) => {
-    try {
-      const { TemplateEngine } = await import('./generator/template.js');
-      const { startServer } = await import('./server.js');
-
-      const sourcePath = path.resolve(cloneDir);
-      if (!fs.existsSync(sourcePath)) {
-        logger.error(`Clone non trouvé: ${sourcePath}`);
-        process.exit(1);
-      }
-
-      let projects: Array<{ name: string; category: string; description: string }> = [];
-      try { projects = JSON.parse(options.projects); } catch { logger.warn('JSON projects invalide, liste vide.'); }
-
-      const brief = {
-        brandName: options.name,
-        industry: options.industry,
-        tagline: options.tagline,
-        description: options.description,
-        services: options.services ? options.services.split(',').map((s: string) => s.trim()).filter(Boolean) : [],
-        projects,
-        contact: { email: options.email },
-        style: 'keep',
-      };
-
-      const engine = new TemplateEngine();
-      const projectDir = await engine.execute(sourcePath, brief, path.resolve(options.output));
-      startServer(projectDir);
-    } catch (err: any) {
-      logger.error(err.message);
-      process.exit(1);
-    }
-  });
-
-// Default: if first arg looks like a URL, treat it as clone command
-const args = process.argv.slice(2);
-if (args.length > 0 && (args[0].startsWith('http') || args[0].includes('.'))) {
-  // Legacy mode: clonage <url>
-  process.argv.splice(2, 0, 'clone');
-}
 
 // === REPRODUCE-EXACT command (deterministic, LLM-free) ===
 program
@@ -572,37 +238,408 @@ program
     }
   });
 
-// === KB-COMPOSE command (Mode B: 1 clone = 1 skeleton, KB v2) ===
-program
-  .command('kb-compose')
-  .description('Composer un nouveau site a partir d\'un clone KB v2 (substitution LLM du contenu)')
-  .requiredOption('--base <site>', 'Nom du site source deja passe par deep-extract')
-  .requiredOption('--brand <path>', 'Chemin vers le brief JSON (brandName, industry, tagline, ...)')
-  .option('--sector <text>', 'Contexte metier injecte dans le prompt LLM')
-  .option('-o, --output <dir>', 'Dossier de sortie', 'generated/compose')
-  .action(async (options: any) => {
+// === ATLAS commands (S3 — RAG vectoriel) ===
+const atlasCmd = program
+  .command('atlas')
+  .description('Vector RAG index over grounded sections (§4.3)');
+
+atlasCmd
+  .command('index <kbSectionDir>')
+  .description('Indexer un dossier .clonage-kb/sections/<site>/ dans l\'atlas')
+  .requiredOption('-s, --site <name>', 'Identifiant du site (ex: mersi)')
+  .option('--atlas-path <path>', 'Chemin du fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .option('--no-replace', 'Append au lieu de remplacer les rows du site')
+  .action(async (kbSectionDir: string, options: any) => {
     try {
-      const { compose } = await import('./compose/index.js');
-      const briefPath = path.resolve(options.brand);
-      if (!fs.existsSync(briefPath)) {
-        logger.error(`Brief non trouve: ${briefPath}`);
-        process.exit(1);
-      }
-      const brief = JSON.parse(fs.readFileSync(briefPath, 'utf-8'));
-      const outputDir = path.resolve(options.output);
-      const result = await compose({
-        baseSite: options.base,
-        brief,
-        sector: options.sector,
-        outputDir,
-        launchServer: false,
+      const { indexSite, JsonlAtlasStore, loadDefaultEmbedder } = await import('./atlas/index.js');
+      const io = new JsonlAtlasStore(path.resolve(options.atlasPath));
+      const { indexed, skipped } = await indexSite({
+        kbSectionDir: path.resolve(kbSectionDir),
+        site: options.site,
+        io,
+        embedder: loadDefaultEmbedder(),
+        replaceForSite: options.replace !== false,
       });
-      logger.info(`Output: ${result.indexPath}`);
+      logger.success(`Atlas indexé: ${indexed} section(s) (${skipped} skipped)`);
+      logger.info(`Path: ${io.path}`);
       process.exit(0);
     } catch (err: any) {
       logger.error(err.message);
       process.exit(1);
     }
   });
+
+atlasCmd
+  .command('search <query...>')
+  .description('Recherche sémantique dans l\'atlas')
+  .option('-r, --role <role>', 'Filtre par rôle')
+  .option('-m, --mood <mood>', 'Filtre par mood (séparés par virgule)')
+  .option('-k, --top <n>', 'Top-K résultats', '5')
+  .option('--atlas-path <path>', 'Chemin du fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .action(async (queryParts: string[], options: any) => {
+    try {
+      const { query: atlasQuery, JsonlAtlasStore, loadDefaultEmbedder } = await import('./atlas/index.js');
+      const io = new JsonlAtlasStore(path.resolve(options.atlasPath));
+      const brief = queryParts.join(' ');
+      const hits = await atlasQuery(
+        {
+          brief,
+          roleFilter: options.role,
+          moodFilter: options.mood ? options.mood.split(',').map((m: string) => m.trim()) : undefined,
+          topK: parseInt(options.top, 10),
+        },
+        { io, embedder: loadDefaultEmbedder() },
+      );
+      if (hits.length === 0) {
+        logger.warn('Aucun résultat.');
+        process.exit(0);
+      }
+      logger.success(`${hits.length} hit(s) pour "${brief}"`);
+      for (const h of hits) {
+        console.log(
+          `  ${h.score.toFixed(3)}  ${h.entry.id}  [${h.entry.fiche.mood.join(',')}]  ${h.entry.fiche.signature.substring(0, 80)}`,
+        );
+      }
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
+atlasCmd
+  .command('stats')
+  .description('Stats de l\'atlas (nombre de rows, sites indexés, embedder)')
+  .option('--atlas-path <path>', 'Chemin du fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .action(async (options: any) => {
+    try {
+      const { stats, JsonlAtlasStore } = await import('./atlas/index.js');
+      const io = new JsonlAtlasStore(path.resolve(options.atlasPath));
+      const s = stats(io);
+      logger.info(`Path:      ${s.path}`);
+      logger.info(`Entries:   ${s.totalEntries}`);
+      logger.info(`Sites:     ${s.sites.join(', ') || '(none)'}`);
+      logger.info(`Embedder:  ${s.embedderIds.join(', ') || '(none)'}`);
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
+// === PLAN command (S4 — Planning agent with Approval Mode) ===
+//
+// CRITICAL: this command runs ONLY Planning. It does NOT chain to Generation.
+// The plan is printed + written to disk so the user can edit _plan.json
+// before running `clonage generate <plan.json>` (S5).
+program
+  .command('plan')
+  .description('Compose un plan de site à partir d\'un brief et de l\'atlas (§4.4 approval mode)')
+  .requiredOption('-b, --brief <path>', 'Chemin vers le brief JSON')
+  .option('-o, --output <path>', 'Chemin de sortie _plan.json', 'generated/<brand>/_plan.json')
+  .option('--atlas-path <path>', 'Fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .option('--top <n>', 'Top-K candidats par rôle', '5')
+  .option('--roles <list>', 'Rôles séparés par virgules (default: canoniques)', '')
+  .action(async (options: any) => {
+    try {
+      const briefPath = path.resolve(options.brief);
+      if (!fs.existsSync(briefPath)) {
+        logger.error(`Brief non trouvé: ${briefPath}`);
+        process.exit(1);
+      }
+      const brief = JSON.parse(fs.readFileSync(briefPath, 'utf-8'));
+      const brandName =
+        (brief.brandName as string) ||
+        (brief.name as string) ||
+        (brief.brand && (brief.brand as any).name) ||
+        'brand';
+      const brandSlug = brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+      const outPath =
+        options.output === 'generated/<brand>/_plan.json'
+          ? path.resolve('generated', brandSlug, '_plan.json')
+          : path.resolve(options.output);
+
+      const { plan, writePlan, renderPlanTable } = await import('./agents/planning/index.js');
+      const { JsonlAtlasStore, loadDefaultEmbedder } = await import('./atlas/index.js');
+      const { loadDefaultTextLLM } = await import('./agents/planning/llm.js');
+
+      const io = new JsonlAtlasStore(path.resolve(options.atlasPath));
+      const embedder = loadDefaultEmbedder();
+      const llm = loadDefaultTextLLM();
+
+      const result = await plan({
+        brief,
+        io,
+        embedder,
+        llm,
+        topKPerRole: parseInt(options.top, 10),
+        roles: options.roles ? options.roles.split(',').map((s: string) => s.trim()) : undefined,
+      });
+
+      writePlan(result.plan, outPath);
+
+      console.log('');
+      console.log(renderPlanTable(result.plan, result.candidates));
+      console.log('');
+      logger.success(`Plan written: ${outPath}`);
+      logger.info('Edit the plan if needed, then run: clonage generate <plan.json>');
+      logger.warn('(plan approval mode — Generation is NOT launched automatically)');
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
+// === GENERATE command (S5 — Generation compiler) ===
+program
+  .command('generate <planPath>')
+  .description('Compile un plan validé en site final (§4.5 zero-LLM-on-HTML)')
+  .requiredOption('-b, --brief <path>', 'Brief JSON (même que celui utilisé pour plan)')
+  .option('-o, --output <dir>', 'Dossier de sortie', 'generated/<brand>')
+  .option('--atlas-path <path>', 'Fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .option('--no-rewrite-text', 'Skip text-diff LLM pass (mode deterministe pur)')
+  .option('--sector <text>', 'Contexte métier injecté dans les prompts text-diff')
+  .action(async (planPath: string, options: any) => {
+    try {
+      const briefPath = path.resolve(options.brief);
+      const brief = JSON.parse(fs.readFileSync(briefPath, 'utf-8'));
+      const brandName =
+        (brief.brandName as string) ||
+        (brief.name as string) ||
+        (brief.brand && (brief.brand as any).name) ||
+        'brand';
+      const brandSlug = brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+      const outputDir =
+        options.output === 'generated/<brand>'
+          ? path.resolve('generated', brandSlug)
+          : path.resolve(options.output);
+
+      const { generate } = await import('./agents/generation/index.js');
+      const { JsonlAtlasStore } = await import('./atlas/index.js');
+      const io = new JsonlAtlasStore(path.resolve(options.atlasPath));
+
+      const res = await generate({
+        planPath: path.resolve(planPath),
+        brief,
+        outputDir,
+        io,
+        rewriteText: options.rewriteText !== false,
+        sector: options.sector,
+      });
+
+      logger.success(`Site généré: ${res.outputHtml}`);
+      logger.info(`Sections : ${res.fingerprints.length}`);
+      for (const fp of res.fingerprints) {
+        logger.dim(`  ${fp.role.padEnd(12)} — nodes=${fp.nodes}  scripts=${fp.scripts}  keyframes=${fp.keyframes}  (site=${fp.site})`);
+      }
+      logger.info(`Report  : ${path.join(res.outputDir, '_generation.json')}`);
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
+// === CLONE-AND-REBRAND command (end-to-end record → brief → rebrand → replay) ===
+program
+  .command('clone-and-rebrand <url>')
+  .description('End-to-end : record a URL, draft a brief via LLM, rebrand the HAR, open replay')
+  .requiredOption('--for <description>', 'Target brand description for the LLM')
+  .option('-o, --output <dir>', 'Output root', './output')
+  .option('-t, --timeout <ms>', 'Record timeout (ms)', '90000')
+  .option('--no-replay', 'Skip the Chromium replay at the end')
+  .action(async (url: string, options: any) => {
+    try {
+      const { cloneAndRebrand } = await import('./pipeline-rebrand.js');
+      const result = await cloneAndRebrand({
+        url,
+        targetDescription: options.for,
+        outputRoot: path.resolve(options.output),
+        recordTimeoutMs: parseInt(options.timeout, 10),
+        replayAfter: options.replay !== false,
+      });
+      logger.success(`Done.`);
+      logger.info(`Source clone: ${result.sourceCloneDir}`);
+      logger.info(`Brief:        ${result.briefPath}`);
+      logger.info(`Rebranded:    ${result.rebrandedCloneDir}`);
+      logger.info(
+        `  brief copy entries=${result.stats.briefCopyEntries} | HAR hits=${result.stats.harTotalHits} | entries modified=${result.stats.harEntriesModified}`,
+      );
+      // Replay keeps the browser open; the command doesn't return until Chromium closes.
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
+// === BRIEF-GEN command (LLM drafts a rebrand brief from a clone) ===
+program
+  .command('brief-gen <cloneDir>')
+  .description('LLM drafts a rebrand-har brief from a recorded clone + target description')
+  .requiredOption('--for <description>', 'Short description of the target brand ("architecture studio moody minimal à Marseille")')
+  .option('-o, --output <path>', 'Where to write the brief JSON', 'briefs/auto.json')
+  .option('--screenshot <path>', 'Override the screenshot sent to the VLM')
+  .action(async (cloneDir: string, options: any) => {
+    try {
+      const { generateBrief, writeBrief } = await import('./brief-gen/index.js');
+      const src = path.resolve(cloneDir);
+      if (!fs.existsSync(src)) {
+        logger.error(`Clone dir not found: ${src}`);
+        process.exit(1);
+      }
+      const result = await generateBrief({
+        cloneDir: src,
+        targetDescription: options.for,
+        screenshotPath: options.screenshot ? path.resolve(options.screenshot) : undefined,
+      });
+      const out = path.resolve(options.output);
+      writeBrief(result.brief, out);
+      logger.success(`Brief written: ${out}`);
+      logger.info(`  brand.source_name: ${result.brief.brand?.source_name ?? '(none)'}`);
+      logger.info(`  brand.name:        ${result.brief.brand?.name ?? '(none)'}`);
+      logger.info(`  copy entries:      ${result.brief.copy.length}`);
+      logger.info(`Next: clonage rebrand-har ${src} -b ${out} --replay`);
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
+// === REBRAND-HAR command (HAR-based rebrand for SPA sites) ===
+//
+// Rewrites every text response inside a HAR (HTML + JS + CSS + SVG) with a
+// brand/copy brief, keeping binary assets (images, fonts, videos) untouched.
+// Output = a twin clone dir the user can open with `clonage replay`.
+//
+// Complements the static `rebrand` command which targets SSR-friendly HTML.
+program
+  .command('rebrand-har <cloneDir>')
+  .description('Rebrand a recorded clone (HAR) by rewriting strings in every text response')
+  .requiredOption('-b, --brief <path>', 'Path to the brief JSON (brand + copy)')
+  .option('-o, --output <dir>', 'Output clone dir (default: <cloneDir>-rebranded)')
+  .option('--replay', 'Launch `clonage replay` on the output after rebrand')
+  .action(async (cloneDir: string, options: any) => {
+    try {
+      const { rebrandClone } = await import('./rebrand-har/index.js');
+      const src = path.resolve(cloneDir);
+      if (!fs.existsSync(src)) {
+        logger.error(`Clone dir not found: ${src}`);
+        process.exit(1);
+      }
+      const out = options.output
+        ? path.resolve(options.output)
+        : src + '-rebranded';
+      const result = rebrandClone({
+        cloneDir: src,
+        outputCloneDir: out,
+        brief: path.resolve(options.brief),
+      });
+      logger.success(
+        `Rebrand HAR: ${result.entriesModified} entries, ${result.totalHits} total hits`,
+      );
+      for (const e of result.perEntry.slice(0, 10)) {
+        logger.dim(`  ${e.hits}× ${e.mime.padEnd(24)} ${e.url.substring(0, 60)}`);
+      }
+      logger.info(`Output: ${out}`);
+      if (options.replay) {
+        const { Replay } = await import('./replay/index.js');
+        const replay = new Replay({ recordingDir: out, notFound: 'fallback' });
+        await replay.start();
+      } else {
+        logger.info(`Next: clonage replay ${out}`);
+        process.exit(0);
+      }
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
+// === COMPOSE command (S6 — full pipeline with validator + retry) ===
+program
+  .command('compose')
+  .description('Full pipeline: plan → generate → validate (retry cap 3)')
+  .requiredOption('-b, --brief <path>', 'Brief JSON')
+  .option('-o, --output <dir>', 'Dossier de sortie', 'generated/<brand>')
+  .option('--atlas-path <path>', 'Fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .option('--max-retries <n>', 'Retry cap (§4.6)', '3')
+  .option('--plan-only', 'Run Planning only, skip Generation + Validation')
+  .action(async (options: any) => {
+    try {
+      const briefPath = path.resolve(options.brief);
+      const brief = JSON.parse(fs.readFileSync(briefPath, 'utf-8'));
+      const brandName =
+        (brief.brandName as string) ||
+        (brief.name as string) ||
+        (brief.brand && (brief.brand as any).name) ||
+        'brand';
+      const brandSlug = brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const outputDir =
+        options.output === 'generated/<brand>'
+          ? path.resolve('generated', brandSlug)
+          : path.resolve(options.output);
+
+      const { compose } = await import('./pipeline-compose.js');
+      const result = await compose({
+        brief,
+        outputDir,
+        atlasPath: path.resolve(options.atlasPath),
+        maxRetries: parseInt(options.maxRetries, 10),
+        planOnly: !!options.planOnly,
+      });
+
+      if (result.failureReportPath) {
+        logger.error(`Failure report: ${result.failureReportPath}`);
+        process.exit(1);
+      }
+      if (result.outputHtml) logger.success(`Output: ${result.outputHtml}`);
+      process.exit(result.passed ? 0 : 1);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
+/* =============================================================================
+ * ARCHIVED COMMANDS — S1 of ScreenCoder refactor (REFACTOR_BRIEF.md §3)
+ * =============================================================================
+ *
+ * The following commands were disabled because their backing modules were
+ * moved to `_archive/` in Week 1. Their original code lives in git history
+ * on this branch (`refactor/screencoder-v2`) and in `_archive/<module>/`.
+ *
+ * TODO: rewire to agents/ in S4-S5. The new flow will be:
+ *
+ *     clonage plan --brief <path>     → agents/planning       (S4)
+ *     clonage generate <plan.json>    → agents/generation     (S5)
+ *     clonage atlas index <cloneDir>  → atlas/store           (S3)
+ *     clonage ground <cloneDir>       → agents/grounding      (S2)
+ *     clonage compose --brief <path>  → full pipeline         (S6)
+ *
+ * Removed commands and their replacement target:
+ *
+ *   - search      → atlas.query()                              (S3)
+ *   - generate    → clonage generate <plan.json>               (S5)
+ *   - kb          → atlas stats                                (S3)
+ *   - compose     → agents/generation compose                  (S5)
+ *   - reskin      → agents/generation with --preserve-source   (S5)
+ *   - template    → agents/generation with identity plan       (S5)
+ *   - reproduce   → replaced by reproduce-exact (already live)
+ *   - kb-compose  → agents/planning + agents/generation        (S4-S5)
+ *   - rebrand-ai  → agents/generation text-diff                (S5)
+ *
+ * =============================================================================
+ */
+
+// Default: if first arg looks like a URL, treat it as clone command
+const args = process.argv.slice(2);
+if (args.length > 0 && (args[0].startsWith('http') || args[0].includes('.'))) {
+  // Legacy mode: clonage <url>
+  process.argv.splice(2, 0, 'clone');
+}
 
 program.parse();
