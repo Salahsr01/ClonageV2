@@ -17,8 +17,28 @@ const program = new Command();
 
 program
   .name('clonage')
-  .description('Clone vivant + analyse + generation de sites Awwwards')
-  .version('3.1.0-refactor');
+  .description('Clone, rebrand and compose modern websites — AI-assisted.')
+  .version('3.1.0');
+
+// === DOCTOR command ===
+program
+  .command('doctor')
+  .description('Check environment — Node, Playwright, API keys, disk space')
+  .action(async () => {
+    const { runDoctor } = await import('./cli/doctor.js');
+    const r = await runDoctor();
+    process.exit(r.ok ? 0 : 1);
+  });
+
+// === STATUS command ===
+program
+  .command('status')
+  .description('Show your workspace — clones, KB sections, atlas, briefs, generated')
+  .action(async () => {
+    const { runStatus } = await import('./cli/status.js');
+    await runStatus();
+    process.exit(0);
+  });
 
 // === CLONE command ===
 program
@@ -447,16 +467,34 @@ program
 program
   .command('clone-and-rebrand <url>')
   .description('End-to-end : record a URL, draft a brief via LLM, rebrand the HAR, open replay')
-  .requiredOption('--for <description>', 'Target brand description for the LLM')
+  .option('--for <description>', 'Target brand description for the LLM')
   .option('-o, --output <dir>', 'Output root', './output')
   .option('-t, --timeout <ms>', 'Record timeout (ms)', '90000')
   .option('--no-replay', 'Skip the Chromium replay at the end')
   .action(async (url: string, options: any) => {
     try {
+      let targetDescription: string = options.for;
+      if (!targetDescription) {
+        if (!process.stdout.isTTY) {
+          logger.error('--for <description> is required in non-interactive mode');
+          process.exit(1);
+        }
+        const prompts = (await import('prompts')).default;
+        const r = await prompts({
+          type: 'text',
+          name: 'for',
+          message: 'Target brand description (one line):',
+        });
+        if (!r.for) {
+          logger.error('Aborted.');
+          process.exit(1);
+        }
+        targetDescription = r.for;
+      }
       const { cloneAndRebrand } = await import('./pipeline-rebrand.js');
       const result = await cloneAndRebrand({
         url,
-        targetDescription: options.for,
+        targetDescription,
         outputRoot: path.resolve(options.output),
         recordTimeoutMs: parseInt(options.timeout, 10),
         replayAfter: options.replay !== false,
@@ -635,11 +673,28 @@ program
  * =============================================================================
  */
 
-// Default: if first arg looks like a URL, treat it as clone command
+// Default behaviour :
+//   - `clonage` (no args)  → interactive menu (F1).
+//   - `clonage <url>`       → legacy shortcut: prepend `clone` subcommand.
+//   - `clonage sub ...`     → commander handles it.
 const args = process.argv.slice(2);
-if (args.length > 0 && (args[0].startsWith('http') || args[0].includes('.'))) {
-  // Legacy mode: clonage <url>
-  process.argv.splice(2, 0, 'clone');
+if (args.length === 0 && process.stdout.isTTY) {
+  // Enter the interactive menu. On selection, we splice the built argv array
+  // back into process.argv and hand control to commander.
+  (async () => {
+    const { runInteractiveMenu } = await import('./cli/menu.js');
+    const result = await runInteractiveMenu();
+    if (!result.argv) process.exit(0);
+    process.argv.splice(2, 0, ...result.argv);
+    program.parse();
+  })().catch((err) => {
+    logger.error(err?.message || String(err));
+    process.exit(1);
+  });
+} else {
+  if (args.length > 0 && (args[0].startsWith('http') || args[0].includes('.'))) {
+    // Legacy shortcut: clonage <url>
+    process.argv.splice(2, 0, 'clone');
+  }
+  program.parse();
 }
-
-program.parse();
