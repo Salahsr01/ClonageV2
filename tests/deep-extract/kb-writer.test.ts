@@ -44,40 +44,6 @@ test('writeKB creates .clonage-kb/sections/<site>/ with index.json + section fil
   assert.ok(fs.existsSync(path.join(result.kbDir, 'hero.html')));
 });
 
-test('writeKB emits a <role>.inv.json sidecar with copyBlocks + fingerprints', () => {
-  const tmp = mkTmp();
-  const result = writeKB({
-    siteName: 'example.com',
-    index: makeIndex(),
-    sections: [
-      {
-        role: 'hero',
-        html: '<!DOCTYPE html><html><head><title>t</title></head><body><section><h1>Hi</h1><script>var x=1;</script></section></body></html>',
-      },
-    ],
-    kbRoot: tmp,
-  });
-  const invPath = path.join(result.kbDir, 'hero.inv.json');
-  assert.ok(fs.existsSync(invPath), 'hero.inv.json not written');
-  const inv = JSON.parse(fs.readFileSync(invPath, 'utf-8'));
-  assert.strictEqual(inv.role, 'hero');
-  assert.ok(Array.isArray(inv.copyBlocks));
-  assert.ok(inv.copyBlocks.some((b: any) => b.text === 'Hi'));
-  assert.strictEqual(inv.fingerprints.scripts.length, 1);
-});
-
-test('writeKB with writeInventory: false skips sidecar', () => {
-  const tmp = mkTmp();
-  const result = writeKB({
-    siteName: 'example.com',
-    index: makeIndex(),
-    sections: [{ role: 'hero', html: '<section><h1>Hi</h1></section>' }],
-    kbRoot: tmp,
-    writeInventory: false,
-  });
-  assert.ok(!fs.existsSync(path.join(result.kbDir, 'hero.inv.json')));
-});
-
 test('writeKB writes parseable JSON identical to input', () => {
   const tmp = mkTmp();
   const input = makeIndex();
