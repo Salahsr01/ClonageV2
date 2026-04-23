@@ -392,6 +392,57 @@ program
     }
   });
 
+// === GENERATE command (S5 — Generation compiler) ===
+program
+  .command('generate <planPath>')
+  .description('Compile un plan validé en site final (§4.5 zero-LLM-on-HTML)')
+  .requiredOption('-b, --brief <path>', 'Brief JSON (même que celui utilisé pour plan)')
+  .option('-o, --output <dir>', 'Dossier de sortie', 'generated/<brand>')
+  .option('--atlas-path <path>', 'Fichier atlas JSONL', '.clonage-kb/atlas.jsonl')
+  .option('--no-rewrite-text', 'Skip text-diff LLM pass (mode deterministe pur)')
+  .option('--sector <text>', 'Contexte métier injecté dans les prompts text-diff')
+  .action(async (planPath: string, options: any) => {
+    try {
+      const briefPath = path.resolve(options.brief);
+      const brief = JSON.parse(fs.readFileSync(briefPath, 'utf-8'));
+      const brandName =
+        (brief.brandName as string) ||
+        (brief.name as string) ||
+        (brief.brand && (brief.brand as any).name) ||
+        'brand';
+      const brandSlug = brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+      const outputDir =
+        options.output === 'generated/<brand>'
+          ? path.resolve('generated', brandSlug)
+          : path.resolve(options.output);
+
+      const { generate } = await import('./agents/generation/index.js');
+      const { JsonlAtlasStore } = await import('./atlas/index.js');
+      const io = new JsonlAtlasStore(path.resolve(options.atlasPath));
+
+      const res = await generate({
+        planPath: path.resolve(planPath),
+        brief,
+        outputDir,
+        io,
+        rewriteText: options.rewriteText !== false,
+        sector: options.sector,
+      });
+
+      logger.success(`Site généré: ${res.outputHtml}`);
+      logger.info(`Sections : ${res.fingerprints.length}`);
+      for (const fp of res.fingerprints) {
+        logger.dim(`  ${fp.role.padEnd(12)} — nodes=${fp.nodes}  scripts=${fp.scripts}  keyframes=${fp.keyframes}  (site=${fp.site})`);
+      }
+      logger.info(`Report  : ${path.join(res.outputDir, '_generation.json')}`);
+      process.exit(0);
+    } catch (err: any) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+  });
+
 /* =============================================================================
  * ARCHIVED COMMANDS — S1 of ScreenCoder refactor (REFACTOR_BRIEF.md §3)
  * =============================================================================
