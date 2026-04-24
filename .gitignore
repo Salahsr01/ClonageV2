@@ -1,9 +1,11 @@
 node_modules/
 dist/
 dist-test/
-output/
-generated/
-.clonage-kb/
+# Data dirs — may exist as real directories OR as symlinks to an external
+# drive. Match both forms (no trailing slash ⇒ matches symlinks too).
+/output
+/generated
+/.clonage-kb
 .playwright-mcp/
 .DS_Store
 *.log
