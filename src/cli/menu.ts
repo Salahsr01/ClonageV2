@@ -24,8 +24,12 @@ const ACTIONS: Action[] = [
     label: 'Clone + Rebrand (one-shot)',
     hint: 'Record a URL → LLM drafts a brief → HAR is rewritten → replay opens',
   },
-  { value: 'record', label: 'Record a URL', hint: 'HAR capture — full JS + assets' },
-  { value: 'replay', label: 'Replay an existing clone', hint: 'Open a HAR in Chromium' },
+  {
+    value: 'record',
+    label: 'Record a URL (capture only, auto-replay after)',
+    hint: 'HAR capture — full JS + assets — then opens in Chromium',
+  },
+  { value: 'replay', label: 'Replay an existing clone', hint: 'Open a recorded HAR in Chromium' },
   { value: 'brief-gen', label: 'Generate a brief from a clone', hint: 'LLM from screenshot + description' },
   { value: 'rebrand-har', label: 'Rebrand a HAR with a brief', hint: 'Apply brand/copy swaps inside the HAR' },
   { value: 'atlas-index', label: 'Atlas — index a KB site', hint: 'Add a deep-extract output to the RAG store' },
@@ -130,9 +134,17 @@ async function askBrief(): Promise<string | null> {
 async function collectCloneAndRebrand(): Promise<string[] | null> {
   const url = await ask('url', 'URL to clone (e.g. https://naughtyduk.com/):');
   if (!url) return null;
+  logger.muted('');
+  logger.muted('  The AI will read the captured site and rewrite it as the brand you describe.');
+  logger.muted('  Examples:');
+  logger.muted('    • studio d\'architecture moody à Marseille');
+  logger.muted('    • agence fintech crypto minimaliste');
+  logger.muted('    • festival techno expérimental Berlin');
+  logger.muted('    • studio de cuisine japonaise à Lyon');
+  logger.muted('');
   const forDesc = await ask(
     'for',
-    'Target brand description (one line, what kind of brand you want):',
+    'What new brand do you want this site transformed into?',
   );
   if (!forDesc) return null;
   const { replayAfter } = await prompts({
@@ -151,7 +163,17 @@ async function collectCloneAndRebrand(): Promise<string[] | null> {
 async function collectRecord(): Promise<string[] | null> {
   const url = await ask('url', 'URL to record:');
   if (!url) return null;
-  return ['record', url];
+  // record itself doesn't take --replay. We signal the main entry via a
+  // synthetic subcommand "record-and-replay" (handled inline in cli.ts).
+  const { openReplay } = await prompts({
+    type: 'toggle',
+    name: 'openReplay',
+    message: 'Open replay in Chromium when done?',
+    initial: true,
+    active: 'yes',
+    inactive: 'no',
+  });
+  return openReplay === false ? ['record', url] : ['record-and-replay', url];
 }
 
 async function collectReplay(): Promise<string[] | null> {
@@ -163,7 +185,8 @@ async function collectReplay(): Promise<string[] | null> {
 async function collectBriefGen(): Promise<string[] | null> {
   const dir = await askCloneDir();
   if (!dir) return null;
-  const forDesc = await ask('for', 'Target description:');
+  logger.muted('  Example : "studio d\'architecture moody à Marseille"');
+  const forDesc = await ask('for', 'What new brand should the clone be rewritten as?');
   if (!forDesc) return null;
   const out = (await ask('out', 'Output path:', 'briefs/auto.json')) || 'briefs/auto.json';
   return ['brief-gen', dir, '--for', forDesc, '-o', out];

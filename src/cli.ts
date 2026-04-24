@@ -72,6 +72,7 @@ program
   .option('-o, --output <dir>', 'Dossier de sortie', './output')
   .option('-t, --timeout <ms>', 'Timeout (ms)', '60000')
   .option('--no-headless', 'Navigateur visible (pour bypass anti-bot)')
+  .option('--replay', 'Open the recorded clone in Chromium right after capture')
   .action(async (url: string, options: any) => {
     try {
       const recorder = new Recorder({
@@ -82,13 +83,43 @@ program
         maxPages: 1,
         headless: options.headless !== false,
       });
-
-      await recorder.record();
+      const dir = await recorder.record();
+      if (options.replay) {
+        const cloneDir = dir ?? findLatestCloneDir(options.output, url);
+        logger.info(`Launching replay on ${cloneDir}…`);
+        const replay = new Replay({ recordingDir: cloneDir, notFound: 'fallback' });
+        await replay.start();
+      }
     } catch (err: any) {
       logger.error(err.message);
       process.exit(1);
     }
   });
+
+// Hidden convenience: `record-and-replay <url>` = `record <url> --replay`.
+// Used by the interactive menu so a single action covers capture + open.
+program
+  .command('record-and-replay <url>', { hidden: true })
+  .option('-o, --output <dir>', 'Dossier de sortie', './output')
+  .option('-t, --timeout <ms>', 'Timeout (ms)', '60000')
+  .action(async (url: string, options: any) => {
+    process.argv.splice(process.argv.indexOf('record-and-replay'), 1, 'record');
+    process.argv.push('--replay');
+    program.parse();
+  });
+
+/** Resolve the freshest clone dir under `outputRoot` matching a URL's host. */
+function findLatestCloneDir(outputRoot: string, url: string): string {
+  const host = new URL(url).hostname;
+  const root = path.resolve(outputRoot);
+  const entries = fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && d.name.startsWith(host.replace(/^www\./, '')))
+    .map((d) => ({ name: d.name, p: path.join(root, d.name), m: fs.statSync(path.join(root, d.name)).mtimeMs }))
+    .sort((a, b) => b.m - a.m);
+  if (entries.length === 0) throw new Error(`No clone dir found under ${root} for host ${host}`);
+  return entries[0].p;
+}
 
 // === REPLAY command (v3.0 Clone Vivant) ===
 program
